@@ -1,13 +1,11 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Mail, ChevronRight, Package } from "lucide-react";
+import { Mail, ChevronRight } from "lucide-react";
 
 const CATEGORY_TR = {
   teslimat_gecikmesi: "Teslimat",
-  urun_hasari: "Ürün / hasar",
   yanlis_urun: "Yanlış ürün",
-  paket_hasari: "Paket",
-  siparis_talebi: "Kapasite / sipariş",
+  siparis_talebi: "Sipariş",
   fatura_duzeltme: "Fatura",
   stok_bilgisi: "Stok",
   genel_destek: "Genel",
@@ -59,23 +57,19 @@ export default function TodayMessagesCard({ data, loading }) {
           {items.map((m) => (
             <li
               key={m.id}
-              className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[12px] border border-slate-50 rounded-xl px-3 py-2 bg-slate-50/50"
+              className="flex flex-col gap-0.5 border border-slate-50 rounded-xl px-3 py-2 bg-slate-50/50"
             >
-              <span className="font-semibold text-slate-800 truncate max-w-[180px]">{m.customer_name}</span>
-              <span className="text-slate-400 text-[11px]">{m.created_at}</span>
-              {m.subject && (
-                <span className="text-slate-600 font-medium truncate flex-1 min-w-[120px]">{m.subject}</span>
-              )}
-              {m.category && (
-                <span className="text-[10px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-md">
-                  {CATEGORY_TR[m.category] ?? m.category.replace(/_/g, " ")}
-                </span>
-              )}
-              {m.related_order_id != null && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600">
-                  <Package className="w-3 h-3" />
-                  Sip. #{m.related_order_id}
-                </span>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-semibold text-slate-800 truncate max-w-[180px] text-[12px]">{m.customer_name}</span>
+                {m.category && (
+                  <span className="text-[10px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-md">
+                    {CATEGORY_TR[m.category] ?? m.category.replace(/_/g, " ")}
+                  </span>
+                )}
+                <span className="text-slate-400 text-[10px] ml-auto">{m.created_at}</span>
+              </div>
+              {m.ai_summary && (
+                <p className="text-[11.5px] text-slate-600 leading-snug truncate">{m.ai_summary}</p>
               )}
             </li>
           ))}

@@ -12,9 +12,7 @@ import { createMessage, fetchMessageCategories, fetchCustomers } from "../api/cl
 const CATEGORY_OPTIONS = [
   { value: "", label: "Tüm kategoriler" },
   { value: "teslimat_gecikmesi", label: "Teslimat gecikmesi" },
-  { value: "urun_hasari", label: "Ürün / hasar" },
   { value: "yanlis_urun", label: "Yanlış ürün" },
-  { value: "paket_hasari", label: "Paket hasarı" },
   { value: "siparis_talebi", label: "Sipariş talebi" },
   { value: "fatura_duzeltme", label: "Fatura" },
   { value: "stok_bilgisi", label: "Stok sorusu" },

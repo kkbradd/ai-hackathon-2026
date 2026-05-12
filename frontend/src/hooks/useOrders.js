@@ -11,7 +11,7 @@ export function useOrders() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState("");
-  const [dateFilter, setDateFilter] = useState("today");
+  const [dateFilter, setDateFilter] = useState("all");
   const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {

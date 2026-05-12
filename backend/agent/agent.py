@@ -3,72 +3,97 @@ import os
 import re
 from typing import Optional
 
-from groq import Groq
+import google.generativeai as genai
 from sqlalchemy.orm import Session
 
 from agent.tool_definitions import TOOL_DEFINITIONS
 from agent import tools as tool_fns
 
-SYSTEM_PROMPT = """Sen Tarım ve Gıda Kooperatifi için çalışan üst düzey bir AI Operasyon Yöneticisisin.
+SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin yapay zeka destekli Operasyon Yöneticisisin.
 
-Kooperatif hakkında:
-- Ürünler: Domates Salçası, Zeytinyağı, Kurutulmuş Domates, Vişne Reçeli, Kayısı Reçeli, Ev Makarnası, Acı Sos, Domates Sosu, Organik Bal, Nohut Unu
-- Müşteriler: Restoranlar, marketler, dağıtıcılar ve toptan satıcılar
-- Taşıyıcılar: Yurtiçi Kargo, Aras Kargo, MNG Kargo, PTT Kargo
+## Kooperatif Profili
+**Ürün Kataloğu (20 ürün):**
+Salça grubu: Domates Salçası, Biber Salçası
+Yağ/Sos grubu: Zeytinyağı, Nar Ekşisi, Sıvı Sumak, Acı Biber Sosu
+Baharat grubu: Karabiber, Kimyon, İsot, Kırmızı Biber, Karışık Baharat Seti
+Kurutulmuş: Kuru Domates, Kuru Biber
+Pekmez grubu: Karadut Pekmezi, Keçiboynuzu Pekmezi, Üzüm Pekmezi
+Öz grubu: Karadut Özü, Yaban Mersini Özü
+Diğer: Ev Eriştesi, El Yapımı Kayısı Reçeli
 
-Görevlerin:
-- Sipariş ve kargo operasyonlarını yönetmek
-- Envanter durumunu takip etmek ve stok uyarıları üretmek
-- Gecikmiş teslimatları tespit etmek ve önlem önermek
-- Operasyonel uyarıları analiz etmek ve önceliklendirmek
-- Ürün talep trendlerini analiz etmek
-- Günlük operasyon özeti ve stratejik içgörüler sunmak
-- AKSİYON ALMAK: Sorunları çözdüğünde veya durumu güncellediğinde ilgili aksiyon araçlarını mutlaka kullan.
+**Müşteri Segmentleri:**
+- restoran / lokanta: büyük hacimli düzenli siparişler (10-50 birim/kalem)
+- market / organik market: yüksek hacim (20-80 birim/kalem)
+- bakkal / büfe / kuruyemişçi: orta hacim (5-25 birim/kalem)
+- kafe / pastane: küçük-orta hacim (3-15 birim/kalem)
+- butik / doğal ürünler: küçük hacim premium (2-10 birim/kalem)
+- bireysel: en küçük hacim (1-5 birim/kalem)
+- yerel_isletme / kooperatif satış / çiftlik: orta hacim (5-20 birim/kalem)
+- kurumsal / otel / gıda dağıtım: kurumsal hacim (10-40 birim/kalem)
 
-SQL aracı (execute_sql):
-- Mevcut araçların kapsamadığı özel sorular için doğrudan veritabanına SQL ile sor.
-- Tablolar: orders, order_items, products, customers, shipments, shipment_updates, customer_messages, inventory, inventory_movements, operational_alerts
-- Yalnızca SELECT kullan. Sonuçları bağlamla birlikte yorumla.
+**Kargo Taşıyıcıları:** Yurtiçi Kargo, Aras Kargo, MNG Kargo, PTT Kargo
 
-Yanıt formatın:
-## [Konu Başlığı]
-**Kritik Bulgular:**
-- [Acil dikkat gerektiren durumlar]
+**Kargo Yaşam Döngüsü:** preparing → in_transit → at_facility → out_for_delivery → delivered
 
-**Önerilen / Alınan Eylemler:**
-- [Spesifik, eyleme geçilebilir öneriler veya alınan kararlar]
+## Veri Modeli
+Tablolar: orders, order_items, products, customers, shipments, shipment_updates, customer_messages, inventory, inventory_movements, operational_alerts
 
-**Detaylar:**
-[Ek bilgi ve analizler]
+Müşteri mesajları (customer_messages): gerçek müşterilerden gelen şikayetler ve geri bildirimler.
+- related_order_id: hangi siparişle ilgili olduğu
+- related_shipment_id: hangi kargoyla ilgili olduğu
+- category: teslimat_gecikmesi, yanlis_urun, siparis_talebi, fatura_duzeltme, stok_bilgisi, genel_destek
+- urgency: yüksek / orta / düşük
 
-Kurallar:
-- Yanıt vermeden önce mutlaka uygun aracı çağır, veriyi gör, sonra yorumla veya eylem yap
-- Proaktif ol: Kullanıcı sormadan önce kritik sorunları öne çıkar
-- Sayısal değerleri Türkçe formatla: ₺45,00 veya 150 kg
-- Kısa, net ve eyleme geçilebilir yanıtlar ver
-- Türkçe yanıt ver
-- ASLA araç adı, JSON, <function>...</function>, SQL veya teknik çağrı metni yazma; araçlar sistem tarafında çalışır, sen sadece iş dilinde özetlersin
+## Görevlerin
+1. **Operasyon İzleme:** Gecikmiş kargolar, düşük stok, şikayet kümeleri, açık uyarılar
+2. **Müşteri İletişimi:** Gelen mesajları analiz et, önceliklendir, yanıt öner veya oluştur
+3. **Stok Yönetimi:** Minimum eşik altındaki ürünler için tedarik önerisi
+4. **Sipariş Takibi:** Spesifik sipariş veya müşteri sorguları
+5. **Trend Analizi:** Hangi ürünler daha fazla satıyor, hangi müşteri segmentleri büyüyor
+6. **Aksiyon Alma:** Uyarı çözme, kargo güncelleme, sipariş durumu değiştirme
+
+## Araç Kullanım Kuralları
+- Her soruya cevap vermeden önce MUTLAKA ilgili aracı çağır
+- execute_sql: Araçlarla karşılanamayan özel analizler için — sadece SELECT
+- Bir müşteri veya sipariş hakkında soru gelirse önce o müşteriyi/siparişi sorgula
+- Mesaj şikayeti varsa ilgili order_id ve shipment_id'yi araştır
+
+## Yanıt Formatı
+Kısa, net, eyleme geçilebilir. Kritik durumlar için:
+
+## [Başlık]
+**Durum:** [Özet — 1 cümle]
+**Bulgular:** [Sayısal veriler]
+**Öneri / Alınan Aksiyon:** [Somut adım]
+
+## Kurallar
+- Türkçe yanıt ver, iş dilini kullan
+- Sayıları Türkçe formatla: ₺1.250,00 — 45 kg — 3 sipariş
+- Araç adı, JSON, SQL veya teknik syntax ASLA yazma — sadece iş çıktısı
+- Proaktif ol: kullanıcı sormadan kritik sorunları öne çıkar
+- Çok uzun listeleri özetle: "5 üründen 3'ü kritik: X, Y, Z..."
 """
 
-# In-memory session history: session_id -> list of contents
+# In-memory session history: session_id -> list of Content dicts
 _sessions: dict[str, list] = {}
 
-def _build_tools() -> list[dict]:
-    tools = []
+
+def _build_gemini_tools() -> list[genai.types.Tool]:
+    """Convert TOOL_DEFINITIONS to Gemini FunctionDeclaration format."""
+    declarations = []
     for td in TOOL_DEFINITIONS:
-        tools.append({
-            "type": "function",
-            "function": {
-                "name": td["name"],
-                "description": td["description"],
-                "parameters": td.get("parameters", {"type": "object", "properties": {}})
-            }
-        })
-    return tools
+        params = td.get("parameters", {"type": "object", "properties": {}})
+        declarations.append(
+            genai.types.FunctionDeclaration(
+                name=td["name"],
+                description=td["description"],
+                parameters=params,
+            )
+        )
+    return [genai.types.Tool(function_declarations=declarations)]
 
 
 def _strip_leaked_tool_syntax(text: str) -> str:
-    """Remove pseudo-tool tags some models echo into assistant content."""
     if not text:
         return text
     s = text
@@ -80,7 +105,6 @@ def _strip_leaked_tool_syntax(text: str) -> str:
 
 
 def _coerce_args(args: dict) -> dict:
-    """Coerce stringified booleans and integers."""
     if not args:
         return {}
     result = {}
@@ -106,23 +130,23 @@ def _coerce_args(args: dict) -> dict:
 def _dispatch_tool(name: str, args: dict, db: Session) -> dict:
     args = _coerce_args(args)
     fn_map = {
-        "get_order_status":        lambda: tool_fns.get_order_status(db, **args),
-        "list_pending_orders":     lambda: tool_fns.list_pending_orders(db, **args),
-        "get_order_history":       lambda: tool_fns.get_order_history(db, **args),
-        "get_shipment_status":     lambda: tool_fns.get_shipment_status(db, **args),
-        "get_shipment_timeline":   lambda: tool_fns.get_shipment_timeline(db, **args),
-        "get_delayed_shipments":   lambda: tool_fns.get_delayed_shipments(db),
-        "get_recent_messages":     lambda: tool_fns.get_recent_messages(db, **args),
+        "get_order_status":           lambda: tool_fns.get_order_status(db, **args),
+        "list_pending_orders":        lambda: tool_fns.list_pending_orders(db, **args),
+        "get_order_history":          lambda: tool_fns.get_order_history(db, **args),
+        "get_shipment_status":        lambda: tool_fns.get_shipment_status(db, **args),
+        "get_shipment_timeline":      lambda: tool_fns.get_shipment_timeline(db, **args),
+        "get_delayed_shipments":      lambda: tool_fns.get_delayed_shipments(db),
+        "get_recent_messages":        lambda: tool_fns.get_recent_messages(db, **args),
         "summarize_daily_operations": lambda: tool_fns.summarize_daily_operations(db),
-        "get_inventory_status":    lambda: tool_fns.get_inventory_status(db, **args),
-        "get_operational_alerts":  lambda: tool_fns.get_operational_alerts(db, **args),
-        "get_demand_trends":       lambda: tool_fns.get_demand_trends(db, **args),
-        "get_daily_summary_rich":  lambda: tool_fns.get_daily_summary_rich(db),
-        "resolve_operational_alert": lambda: tool_fns.resolve_operational_alert(db, **args),
-        "update_shipment_status":  lambda: tool_fns.update_shipment_status(db, **args),
-        "draft_supplier_order":    lambda: tool_fns.draft_supplier_order(db, **args),
-        "update_order_status":     lambda: tool_fns.update_order_status(db, **args),
-        "execute_sql":             lambda: tool_fns.execute_sql(db, **args),
+        "get_inventory_status":       lambda: tool_fns.get_inventory_status(db, **args),
+        "get_operational_alerts":     lambda: tool_fns.get_operational_alerts(db, **args),
+        "get_demand_trends":          lambda: tool_fns.get_demand_trends(db, **args),
+        "get_daily_summary_rich":     lambda: tool_fns.get_daily_summary_rich(db),
+        "resolve_operational_alert":  lambda: tool_fns.resolve_operational_alert(db, **args),
+        "update_shipment_status":     lambda: tool_fns.update_shipment_status(db, **args),
+        "draft_supplier_order":       lambda: tool_fns.draft_supplier_order(db, **args),
+        "update_order_status":        lambda: tool_fns.update_order_status(db, **args),
+        "execute_sql":                lambda: tool_fns.execute_sql(db, **args),
     }
     fn = fn_map.get(name)
     if fn is None:
@@ -131,74 +155,76 @@ def _dispatch_tool(name: str, args: dict, db: Session) -> dict:
 
 
 def chat(message: str, session_id: str, db: Session) -> dict:
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("GROQ_API_KEY ortam değişkeni ayarlanmamış.")
+        raise RuntimeError("GEMINI_API_KEY ortam değişkeni ayarlanmamış.")
 
-    client = Groq(api_key=api_key)
-    tools = _build_tools()
+    genai.configure(api_key=api_key)
+    tools = _build_gemini_tools()
+    model = genai.GenerativeModel(
+        "gemini-2.5-flash",
+        system_instruction=SYSTEM_PROMPT,
+        tools=tools,
+        generation_config=genai.types.GenerationConfig(temperature=0.2),
+    )
 
+    # Gemini uses a chat session with history
     history = _sessions.setdefault(session_id, [])
-
-    if not history:
-        history.append({"role": "system", "content": SYSTEM_PROMPT})
-
-    # Append new user message
-    history.append({"role": "user", "content": message})
 
     tool_used: Optional[str] = None
     tool_data: Optional[dict] = None
 
-    # Agentic loop: keep calling until no more tool calls
+    # Start/resume chat session
+    chat_session = model.start_chat(history=history)
+
+    # Agentic loop
     max_rounds = 6
-    for _ in range(max_rounds):
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=history,
-            tools=tools,
-            temperature=0.2,
-        )
-
-        message_obj = response.choices[0].message
-        
-        # We need to append the raw dict to history
-        # Pydantic dump or custom dict
-        msg_dict = message_obj.model_dump(exclude_unset=True)
-        history.append(msg_dict)
-
-        if not message_obj.tool_calls:
-            # No tool calls — final answer
-            break
-
-        # Dispatch all tool calls
-        for tool_call in message_obj.tool_calls:
-            tool_used = tool_call.function.name
-            
-            try:
-                args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
-            except json.JSONDecodeError:
-                args = {}
-                
-            result_dict = _dispatch_tool(tool_call.function.name, args, db)
-            tool_data = result_dict
-            
-            history.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "name": tool_call.function.name,
-                "content": json.dumps(result_dict)
-            })
-
-    # Extract final text
+    current_message = message
     final_text = ""
-    for entry in reversed(history):
-        if entry.get("role") == "assistant" and entry.get("content"):
-            final_text = entry["content"]
-            break
+
+    for _ in range(max_rounds):
+        response = chat_session.send_message(current_message)
+        parts = response.candidates[0].content.parts
+
+        # Collect all function calls in this response
+        fn_calls = [p.function_call for p in parts if hasattr(p, "function_call") and p.function_call.name]
+
+        if fn_calls:
+            # Build function response parts for all tool calls
+            fn_response_parts = []
+            for fc in fn_calls:
+                tool_used = fc.name
+                args = dict(fc.args) if fc.args else {}
+                result_dict = _dispatch_tool(fc.name, args, db)
+                tool_data = result_dict
+                fn_response_parts.append(
+                    genai.protos.Part(
+                        function_response=genai.protos.FunctionResponse(
+                            name=fc.name,
+                            response={"result": json.dumps(result_dict)},
+                        )
+                    )
+                )
+
+            # Send all function responses back in one message
+            current_message = genai.protos.Content(
+                role="function",
+                parts=fn_response_parts,
+            )
+            continue
+
+        # No function calls — extract text
+        text_parts = [p.text for p in parts if hasattr(p, "text") and p.text]
+        if text_parts:
+            final_text = "".join(text_parts)
+        break
+
+    # Persist history for next turn (Gemini chat session tracks it internally)
+    _sessions[session_id] = chat_session.history
 
     # Keep history bounded
-    if len(history) > 40:
-        _sessions[session_id] = [history[0]] + history[-39:]
+    if len(_sessions[session_id]) > 40:
+        _sessions[session_id] = _sessions[session_id][-40:]
 
     cleaned = _strip_leaked_tool_syntax(final_text.strip())
     return {"reply": cleaned, "tool_used": tool_used, "tool_data": tool_data}

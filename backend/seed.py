@@ -1,7 +1,6 @@
 """
-Seed script for the Tarım ve Gıda Kooperatifi operational platform.
-Run: python seed.py
-Drops and recreates all tables, then inserts realistic cooperative data.
+Seed script — 1 aylık gerçekçi kooperatif verisi.
+Her sipariş → kargo lifecycle → ilgili müşteri mesajları zinciri birbiriyle bağlantılı.
 """
 import random
 from datetime import datetime, timedelta
@@ -20,169 +19,186 @@ from message_intel import brief_summary, classify_customer_message
 random.seed(42)
 
 # ── Products ──────────────────────────────────────────────────────────────────
-
 PRODUCTS = [
-    ("Domates Salçası",      "Salça",    1500.00, "kg",   "5 kg"),
-    ("Biber Salçası",        "Salça",    1500.00, "kg",   "5 kg"),
-    ("Zeytinyağı",           "Yağ",      2000.00, "L",    "5 Litre"),
-    ("Nar Ekşisi",           "Sos",       250.00, "L",    "1 Litre"),
-    ("Sıvı Sumak",           "Sos",       250.00, "L",    "1 Litre"),
-    ("Karabiber",            "Baharat",   300.00, "kg",   "1 kg"),
-    ("Kimyon",               "Baharat",   400.00, "kg",   "1 kg"),
-    ("İsot",                 "Baharat",   500.00, "kg",   "1 kg"),
-    ("Kırmızı Biber",        "Baharat",   500.00, "kg",   "1 kg"),
-    ("Kuru Domates",         "Kurutulmuş", 450.00, "kg",   "1 kg"),
-    ("Kuru Biber",           "Kurutulmuş", 450.00, "kg",   "1 kg"),
-    ("Karadut Pekmezi",      "Pekmez",    350.00, "L",    "1 Litre"),
-    ("Keçiboynuzu Pekmezi",  "Pekmez",    350.00, "L",    "1 Litre"),
-    ("Üzüm Pekmezi",         "Pekmez",    300.00, "L",    "1 Litre"),
-    ("Karadut Özü",          "Öz",        400.00, "L",    "1 Litre"),
-    ("Yaban Mersini Özü",    "Öz",        450.00, "L",    "1 Litre"),
+    ("Domates Salçası",         "Salça",      1500.00, "kg",       "5 kg"),
+    ("Biber Salçası",           "Salça",      1500.00, "kg",       "5 kg"),
+    ("Zeytinyağı",              "Yağ",        2000.00, "L",        "5 Litre"),
+    ("Nar Ekşisi",              "Sos",         250.00, "L",        "1 Litre"),
+    ("Sıvı Sumak",              "Sos",         250.00, "L",        "1 Litre"),
+    ("Karabiber",               "Baharat",     300.00, "kg",       "1 kg"),
+    ("Kimyon",                  "Baharat",     400.00, "kg",       "1 kg"),
+    ("İsot",                    "Baharat",     500.00, "kg",       "1 kg"),
+    ("Kırmızı Biber",           "Baharat",     500.00, "kg",       "1 kg"),
+    ("Kuru Domates",            "Kurutulmuş",  450.00, "kg",       "1 kg"),
+    ("Kuru Biber",              "Kurutulmuş",  450.00, "kg",       "1 kg"),
+    ("Karadut Pekmezi",         "Pekmez",      350.00, "L",        "1 Litre"),
+    ("Keçiboynuzu Pekmezi",     "Pekmez",      350.00, "L",        "1 Litre"),
+    ("Üzüm Pekmezi",            "Pekmez",      300.00, "L",        "1 Litre"),
+    ("Karadut Özü",             "Öz",          400.00, "L",        "1 Litre"),
+    ("Yaban Mersini Özü",       "Öz",          450.00, "L",        "1 Litre"),
+    ("Acı Biber Sosu",          "Sos",         180.00, "şişe",     "1 şişe"),
+    ("Ev Eriştesi",             "Makarna",      65.00, "kg",       "1 kg"),
+    ("Karışık Baharat Seti",    "Baharat",     120.00, "adet",     "1 adet"),
+    ("El Yapımı Kayısı Reçeli", "Reçel",        95.00, "kavanoz",  "1 kavanoz"),
 ]
 
-# (quantity_kg, min_threshold, reorder_point) per product index
 INVENTORY_LEVELS = [
-    (500.0,  100.0, 200.0),   # Domates Salçası
-    (300.0,   80.0, 150.0),   # Biber Salçası
-    (35.0,    50.0, 100.0),   # Zeytinyağı — BELOW THRESHOLD
-    (180.0,   50.0, 100.0),   # Nar Ekşisi
-    (180.0,   50.0, 100.0),   # Sıvı Sumak
-    (45.0,    50.0, 100.0),   # Karabiber — BELOW THRESHOLD
-    (150.0,   40.0,  80.0),   # Kimyon
-    (200.0,   50.0, 100.0),   # İsot
-    (250.0,   60.0, 120.0),   # Kırmızı Biber
-    (120.0,   30.0,  60.0),   # Kuru Domates
-    (110.0,   30.0,  60.0),   # Kuru Biber
-    (90.0,    25.0,  50.0),   # Karadut Pekmezi
-    (85.0,    25.0,  50.0),   # Keçiboynuzu Pekmezi
-    (100.0,   30.0,  60.0),   # Üzüm Pekmezi
-    (70.0,    20.0,  40.0),   # Karadut Özü
-    (65.0,    20.0,  40.0),   # Yaban Mersini Özü
+    (500.0, 100.0, 200.0), (300.0,  80.0, 150.0), (400.0,  50.0, 100.0),
+    (180.0,  50.0, 100.0), (180.0,  50.0, 100.0), (150.0,  50.0, 100.0),
+    (150.0,  40.0,  80.0), (200.0,  50.0, 100.0), (250.0,  60.0, 120.0),
+    (120.0,  30.0,  60.0), (110.0,  30.0,  60.0), ( 90.0,  25.0,  50.0),
+    ( 85.0,  25.0,  50.0), (100.0,  30.0,  60.0), ( 70.0,  20.0,  40.0),
+    ( 65.0,  20.0,  40.0), (200.0,  40.0,  80.0), (180.0,  50.0, 100.0),
+    (150.0,  30.0,  60.0), (120.0,  25.0,  50.0),
 ]
 
 # ── Customers ─────────────────────────────────────────────────────────────────
-
 BUSINESS_PREFIXES = [
-    "Akdeniz", "Güneş", "Anadolu", "Ege", "Karadeniz",
-    "Yıldız", "Altın", "Doğa", "Bereket", "Şimşek",
-    "Boğaziçi", "Marmara", "Çukurova", "Kızılırmak", "Yeşil",
-    "Sarı", "Mavi", "Turuncu", "Kırmızı", "Yeni",
+    "Akdeniz", "Güneş", "Anadolu", "Ege", "Karadeniz", "Yıldız", "Altın",
+    "Doğa", "Bereket", "Şimşek", "Boğaziçi", "Marmara", "Çukurova",
+    "Kızılırmak", "Yeşil", "Sarı", "Mavi", "Turuncu", "Yeni", "Toprak",
+    "Hasad", "Öz", "Seçkin", "Ata", "Doğal", "Serin", "Taze", "Mis", "Bahar",
+]
+BUSINESS_CUSTOMER_TYPES = [
+    ("Restoran", "restoran"), ("Market", "market"), ("Gıda Dağıtım", "kurumsal"),
+    ("Toptan Satış", "kurumsal"), ("Otel", "kurumsal"), ("Cafe", "kafe"),
+    ("Lokanta", "restoran"), ("Gıda Ltd", "kurumsal"), ("Ziraat Market", "market"),
+    ("Gurme", "butik"), ("Bakkal", "bakkal"), ("Büfe", "bakkal"),
+    ("Pastane", "kafe"), ("Kuruyemişçi", "bakkal"), ("Organik Market", "market"),
+    ("Doğal Ürünler", "butik"), ("Yerel Lezzetler", "yerel_isletme"),
+    ("Kooperatif Satış", "yerel_isletme"), ("Çiftlik Mağazası", "yerel_isletme"),
+    ("El Sanatları Evi", "butik"),
+]
+INDIVIDUAL_NAMES = [
+    "Ahmet Yılmaz", "Ayşe Kaya", "Mehmet Demir", "Fatma Çelik", "Ali Şahin",
+    "Zeynep Yıldız", "Mustafa Öztürk", "Elif Aydın", "Burak Özdemir", "Canan Arslan",
+    "Kemal Doğan", "Sibel Kılıç", "Okan Çetin", "Derya Gür", "Emre Polat",
+    "Gizem Koç", "Hakan Kurt", "İrem Özcan", "Caner Bulut", "Esra Er",
 ]
 
-BUSINESS_TYPES = [
-    "Restoran", "Market", "Gıda Dağıtım", "Toptan Satış", "Otel",
-    "Cafe", "Lokanta", "Gıda Ltd", "Ziraat Market", "Gurme",
-]
-
-CITIES = [
-    "İstanbul", "Ankara", "İzmir", "Bursa", "Antalya",
-    "Konya", "Gaziantep", "Mersin", "Eskişehir", "Kayseri",
-]
-
+CITIES = ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya", "Konya", "Gaziantep", "Mersin", "Eskişehir", "Kayseri"]
 DISTRICTS = {
-    "İstanbul":   ["Kadıköy", "Beşiktaş", "Şişli", "Üsküdar", "Maltepe"],
-    "Ankara":     ["Çankaya", "Keçiören", "Mamak", "Yenimahalle", "Etimesgut"],
-    "İzmir":      ["Bornova", "Karşıyaka", "Konak", "Buca", "Bayraklı"],
-    "Bursa":      ["Nilüfer", "Osmangazi", "Yıldırım", "Gemlik", "İnegöl"],
-    "Antalya":    ["Muratpaşa", "Konyaaltı", "Kepez", "Alanya", "Manavgat"],
-    "Konya":      ["Selçuklu", "Meram", "Karatay", "Ereğli", "Akşehir"],
-    "Gaziantep":  ["Şahinbey", "Şehitkamil", "Nizip", "İslahiye", "Nurdağı"],
-    "Mersin":     ["Yenişehir", "Toroslar", "Akdeniz", "Mezitli", "Tarsus"],
-    "Eskişehir":  ["Odunpazarı", "Tepebaşı", "Mihalıccık", "Saricakaya", "Sivrihisar"],
-    "Kayseri":    ["Kocasinan", "Melikgazi", "Talas", "Develi", "Pınarbaşı"],
+    "İstanbul": ["Kadıköy", "Beşiktaş", "Şişli", "Üsküdar", "Maltepe"],
+    "Ankara":   ["Çankaya", "Keçiören", "Mamak", "Yenimahalle", "Etimesgut"],
+    "İzmir":    ["Bornova", "Karşıyaka", "Konak", "Buca", "Bayraklı"],
+    "Bursa":    ["Nilüfer", "Osmangazi", "Yıldırım", "Gemlik", "İnegöl"],
+    "Antalya":  ["Muratpaşa", "Konyaaltı", "Kepez", "Alanya", "Manavgat"],
+    "Konya":    ["Selçuklu", "Meram", "Karatay", "Ereğli", "Akşehir"],
+    "Gaziantep":["Şahinbey", "Şehitkamil", "Nizip", "İslahiye", "Nurdağı"],
+    "Mersin":   ["Yenişehir", "Toroslar", "Akdeniz", "Mezitli", "Tarsus"],
+    "Eskişehir":["Odunpazarı", "Tepebaşı", "Sivrihisar", "Mihalgazi", "Beylikova"],
+    "Kayseri":  ["Kocasinan", "Melikgazi", "Talas", "Develi", "Pınarbaşı"],
 }
-
 CARRIERS = ["Yurtiçi Kargo", "Aras Kargo", "MNG Kargo", "PTT Kargo"]
+CARRIER_PREFIXES = {"Yurtiçi Kargo": "YK", "Aras Kargo": "AR", "MNG Kargo": "MN", "PTT Kargo": "PT"}
 
-CARRIER_TRACKING_PREFIXES = {
-    "Yurtiçi Kargo": "YK",
-    "Aras Kargo":    "AR",
-    "MNG Kargo":     "MN",
-    "PTT Kargo":     "PT",
+QTY_RANGES = {
+    "restoran": (10, 50), "market": (20, 80), "bakkal": (5, 25),
+    "kafe": (3, 15), "butik": (2, 10), "bireysel": (1, 5),
+    "yerel_isletme": (5, 20), "kurumsal": (10, 40),
 }
 
-COMPLAINT_SUBJECTS = [
-    "Teslimat gecikmesi",
-    "Ürün kalitesi sorunu",
-    "Yanlış ürün teslimatı",
-    "Hasar görmüş paket",
-    "Toplu sipariş talebi",
-    "Fatura düzeltme talebi",
-    "Stok bilgisi talebi",
-    "Acil sipariş bildirimi",
+# ── Mesaj şablonları — kategoriye göre ──────────────────────────────────────
+
+# Her şablon: (subject, body_template, category, urgency)
+# body_template değişkenleri: {order_id}, {product}, {tracking}, {carrier}, {days}, {est_date}, {item_count}, {qty}
+
+DELAY_MESSAGES = [
+    ("Teslimat gecikmesi",
+     "Merhaba, #{order_id} numaralı siparişim {days} gündür yolda görünüyor. "
+     "{carrier} üzerinde {tracking} takip numarasıyla takip etmeye çalışıyorum ama güncelleme gelmiyor. "
+     "Ne zaman teslim edilebilir?",
+     "teslimat_gecikmesi", "yüksek"),
+
+    ("Teslimat gecikmesi",
+     "#{order_id} siparişim için tahmini teslimat tarihi {est_date} olarak gösteriyordu, "
+     "bugün hâlâ elimde değil. Kargo durumu nedir?",
+     "teslimat_gecikmesi", "yüksek"),
+
+    ("Kargo takip sorunu",
+     "#{order_id} nolu siparişimin kargosu {carrier} üzerinde {days} gündür hareket etmiyor. "
+     "Lütfen araştırır mısınız?",
+     "teslimat_gecikmesi", "yüksek"),
 ]
 
-COMPLAINT_BODIES = [
-    "Sipariş verdiğim ürünler {days} gündür gelmedi. Kargo durumu hakkında bilgi alabilir miyim?",
-    "Son teslimatımda {product} ürünleri bozuk geldi. İade veya değişim yapılmasını talep ediyorum.",
-    "Siparişimde {product} yerine farklı bir ürün geldi. En kısa sürede düzeltme yapılmasını bekliyorum.",
-    "Paketlerimden biri hasar görmüş vaziyette teslim edildi. Fotoğraf gönderebilirim.",
-    "{product} için {qty} adetlik acil sipariş vermek istiyorum. Stok durumunuzu öğrenebilir miyim?",
-    "Son faturamda hata var gibi görünüyor. Kontrol edilmesini rica ediyorum.",
+DELIVERY_COMPLAINT_MESSAGES = [
+    ("Ürün kalitesi sorunu",
+     "Merhaba, #{order_id} numaralı sipariş teslim edildi ancak içindeki {product} ürünleri "
+     "bozuk çıktı. İade veya değişim yapmak istiyorum.",
+     "urun_hasari", "yüksek"),
+
+    ("Yanlış ürün teslimatı",
+     "#{order_id} siparişimde {product} sipariş ettim fakat gelen pakette farklı ürün çıktı. "
+     "Lütfen doğru ürünü gönderir misiniz?",
+     "yanlis_urun", "orta"),
+
+    ("Hasar görmüş paket",
+     "#{order_id} numaralı kargom teslim edildi ama paket hasar görmüş. "
+     "{product} ürünleri dökülmüş, kullanılamaz durumda.",
+     "paket_hasari", "orta"),
+
+    ("Eksik ürün bildirimi",
+     "#{order_id} siparişimde toplam {item_count} kalem vardı ama teslimatta {product} eksikti. "
+     "Gönderimi tamamlar mısınız?",
+     "urun_hasari", "orta"),
+
+    ("Memnuniyet bildirimi",
+     "#{order_id} siparişim sorunsuz teslim edildi, teşekkür ederim. "
+     "{product} kalitesi çok iyiydi, yakında tekrar sipariş vereceğim.",
+     "genel_destek", "düşük"),
 ]
 
-INITIAL_ALERTS = [
-    (
-        "low_stock", "critical",
-        "Zeytinyağı Stok Kritik Seviyede",
-        "Zeytinyağı stoku minimum eşiğin altına düştü (35 şişe < 50 şişe eşiği). "
-        "Son 7 günlük satış hızına göre 3-4 gün içinde tükenebilir.",
-        None,
-    ),
-    (
-        "low_stock", "critical",
-        "Karabiber Stok Uyarısı",
-        "Karabiber stoku kritik seviyede (45 adet < 50 adet eşiği). "
-        "Bekleyen siparişleri karşılamak için yenileme önerilir.",
-        None,
-    ),
-    (
-        "delayed_shipment", "critical",
-        "3 Kargo 48+ Saat Gecikmede",
-        "MNG Kargo operatöründe taşınan 3 kargo, tahmini teslimat tarihini 2 günden fazla aştı. "
-        "Müşteri bildirimi ve kargo takibi gerekiyor.",
-        None,
-    ),
-    (
-        "carrier_issue", "warning",
-        "MNG Kargo Bölgesel Operasyon Gecikmesi",
-        "İzmir ve Ankara bölgelerinde MNG Kargo operasyonlarında 24-48 saatlik gecikme bildirimi. "
-        "Aktif kargolar için alternatif takip önerilir.",
-        None,
-    ),
-    (
-        "complaint", "info",
-        "Yeni Müşteri Şikayeti — İnceleme Gerekiyor",
-        "Güneş Market hasar görmüş ürün teslimatı bildirdi. "
-        "Teslimat fotoğrafları incelenmeli ve müşteri bilgilendirilmeli.",
-        None,
-    ),
+GENERAL_MESSAGES = [
+    ("Toplu sipariş talebi",
+     "{product} için {qty} adetlik toplu sipariş vermek istiyorum. "
+     "Fiyat ve stok durumunu öğrenebilir miyim?",
+     "siparis_talebi", "orta"),
+
+    ("Stok bilgisi talebi",
+     "{product} ürününüzde stok var mı? Yakında büyük bir etkinliğimiz var, "
+     "{qty} adet lazım olacak.",
+     "stok_bilgisi", "düşük"),
+
+    ("Fatura düzeltme talebi",
+     "#{order_id} numaralı sipariş faturamda hata var gibi görünüyor. "
+     "Kontrol edilmesini rica ediyorum.",
+     "fatura_duzeltme", "düşük"),
+
+    ("Acil stok talebi",
+     "{product} için acil {qty} adetlik sipariş vermek istiyorum. "
+     "Stok durumunuzu öğrenebilir miyim?",
+     "siparis_talebi", "yüksek"),
 ]
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _rand_phone() -> str:
+def _rand_phone():
     return f"05{random.randint(30, 59)}{random.randint(1000000, 9999999)}"
 
+def _tracking(carrier):
+    return f"{CARRIER_PREFIXES.get(carrier, 'KG')}{random.randint(100000000, 999999999)}"
 
-def _rand_date(days_ago_max: int, days_ago_min: int = 0) -> datetime:
-    delta = random.randint(days_ago_min, days_ago_max)
-    return datetime.utcnow() - timedelta(days=delta)
+def _slugify(s):
+    for k, v in {"ş":"s","ı":"i","ö":"o","ü":"u","ç":"c","ğ":"g","Ş":"S","İ":"I","Ö":"O","Ü":"U","Ç":"C","Ğ":"G"," ":"",".":"","&":""}.items():
+        s = s.replace(k, v)
+    return s.lower()
+
+def _dt(base: datetime, **kwargs) -> datetime:
+    return base + timedelta(**kwargs)
+
+def _parse_dt(v):
+    """Parse datetime from string if SQLite returns string."""
+    if isinstance(v, datetime):
+        return v
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(v, fmt)
+        except ValueError:
+            continue
+    return datetime.utcnow()
 
 
-def _tracking_number(carrier: str) -> str:
-    prefix = CARRIER_TRACKING_PREFIXES.get(carrier, "KG")
-    return f"{prefix}{random.randint(900000000, 999999999)}"
-
-
-def _slugify(s: str) -> str:
-    replacements = {"ş": "s", "ı": "i", "ö": "o", "ü": "u", "ç": "c", "ğ": "g",
-                    "Ş": "S", "İ": "I", "Ö": "O", "Ü": "U", "Ç": "C", "Ğ": "G",
-                    " ": "", ".": "", "&": ""}
-    result = s.lower()
-    for k, v in replacements.items():
-        result = result.replace(k, v)
-    return result
-
+# ── Main seed ──────────────────────────────────────────────────────────────────
 
 def seed():
     print("Dropping and recreating all tables...")
@@ -191,363 +207,475 @@ def seed():
 
     db: Session = SessionLocal()
     try:
-        # ── Admin user ────────────────────────────────────────────────────────
-        admin = User(
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # ── Admin ─────────────────────────────────────────────────────────────
+        db.add(User(
             email="admin@demo.com",
             password_hash=get_password_hash("demo123"),
             full_name="Kooperatif Yöneticisi",
             role="admin",
-        )
-        db.add(admin)
+        ))
         db.flush()
         print("✓ Admin user created")
 
         # ── Products ──────────────────────────────────────────────────────────
         products = []
-        for name, category, price, unit, pkg_size in PRODUCTS:
-            p = Product(name=name, category=category, price=price, unit=unit, package_size=pkg_size)
+        for name, cat, price, unit, pkg in PRODUCTS:
+            p = Product(name=name, category=cat, price=price, unit=unit, package_size=pkg)
             db.add(p)
             products.append(p)
         db.flush()
-        print(f"✓ {len(products)} products created")
+        print(f"✓ {len(products)} products")
 
         # ── Inventory ─────────────────────────────────────────────────────────
-        inventories = []
-        movements_to_add = []
         for i, product in enumerate(products):
             qty, min_thr, reorder = INVENTORY_LEVELS[i]
-            inv = Inventory(
+            db.add(Inventory(
                 product_id=product.id,
                 quantity_kg=qty,
                 min_threshold=min_thr,
                 reorder_point=reorder,
-                last_updated=datetime.utcnow() - timedelta(hours=random.randint(1, 12)),
-            )
-            db.add(inv)
-            inventories.append(inv)
-
-            # Historical consumption movements (last 14 days)
-            for d in range(14, 0, -3):
-                consumed = random.uniform(5.0, 30.0)
-                movements_to_add.append(InventoryMovement(
+                last_updated=now - timedelta(hours=random.randint(1, 6)),
+            ))
+            for d in range(28, 0, -4):
+                db.add(InventoryMovement(
                     product_id=product.id,
-                    order_id=None,
-                    quantity_change=-consumed,
+                    quantity_change=-random.uniform(5.0, 25.0),
                     movement_type="order_fulfillment",
-                    timestamp=datetime.utcnow() - timedelta(days=d),
+                    timestamp=now - timedelta(days=d),
                 ))
         db.flush()
-        for m in movements_to_add:
-            db.add(m)
-        print(f"✓ {len(inventories)} inventory records + {len(movements_to_add)} historical movements")
+        print(f"✓ {len(products)} inventory records + historical movements")
 
         # ── Customers ─────────────────────────────────────────────────────────
-        INDIVIDUAL_NAMES = [
-            "Ahmet Yılmaz", "Ayşe Kaya", "Mehmet Demir", "Fatma Çelik", "Ali Şahin", 
-            "Zeynep Yıldız", "Mustafa Öztürk", "Elif Aydın", "Burak Özdemir", "Canan Arslan", 
-            "Kemal Doğan", "Sibel Kılıç", "Okan Çetin", "Derya Gür", "Emre Polat", 
-            "Gizem Koç", "Hakan Kurt", "İrem Özcan", "Caner Bulut", "Esra Er"
-        ]
-
         customers = []
-        used_emails: set = set()
-        used_combos: set = set()
+        used_emails = set()
+        used_combos = set()
 
-        for i in range(20):
-            # Kurumsal Customer
+        for i in range(40):
             prefix = random.choice(BUSINESS_PREFIXES)
-            btype = random.choice(BUSINESS_TYPES)
-            combo = (prefix, btype)
-            while combo in used_combos:
+            lbl, ctype = random.choice(BUSINESS_CUSTOMER_TYPES)
+            combo = (prefix, lbl)
+            attempts = 0
+            while combo in used_combos and attempts < 20:
                 prefix = random.choice(BUSINESS_PREFIXES)
-                btype = random.choice(BUSINESS_TYPES)
-                combo = (prefix, btype)
+                lbl, ctype = random.choice(BUSINESS_CUSTOMER_TYPES)
+                combo = (prefix, lbl)
+                attempts += 1
             used_combos.add(combo)
-            name = f"{prefix} {btype}"
+            name = f"{prefix} {lbl}"
             slug = _slugify(name)
             email = f"{slug}{i}@{slug[:8]}.com.tr"
             if email in used_emails:
                 email = f"{slug}{i}{random.randint(10, 99)}@mail.com.tr"
             used_emails.add(email)
-            c_corp = Customer(name=name, email=email, phone=_rand_phone(), customer_type="kurumsal")
-            db.add(c_corp)
-            customers.append(c_corp)
+            c = Customer(name=name, email=email, phone=_rand_phone(), customer_type=ctype)
+            db.add(c)
+            customers.append(c)
 
-            # Bireysel Customer
-            name_ind = INDIVIDUAL_NAMES[i % len(INDIVIDUAL_NAMES)]
-            slug_ind = _slugify(name_ind)
-            email_ind = f"{slug_ind}{i}@mail.com"
-            if email_ind in used_emails:
-                email_ind = f"{slug_ind}{i}{random.randint(10, 99)}@mail.com"
-            used_emails.add(email_ind)
-            c_ind = Customer(name=name_ind, email=email_ind, phone=_rand_phone(), customer_type="bireysel")
-            db.add(c_ind)
-            customers.append(c_ind)
+        for i, iname in enumerate(INDIVIDUAL_NAMES):
+            slug = _slugify(iname)
+            email = f"{slug}{i}@mail.com"
+            if email in used_emails:
+                email = f"{slug}{i}{random.randint(10, 99)}@mail.com"
+            used_emails.add(email)
+            c = Customer(name=iname, email=email, phone=_rand_phone(), customer_type="bireysel")
+            db.add(c)
+            customers.append(c)
+
         db.flush()
-        print(f"✓ {len(customers)} customers created")
+        print(f"✓ {len(customers)} customers")
 
-        # ── Orders & Shipments ────────────────────────────────────────────────
-        orders = []
-        shipments_created = 0
-        now = datetime.utcnow()
+        # ── 1 Aylık Sipariş + Kargo + Mesaj Zinciri ───────────────────────────
+        #
+        # Strateji:
+        # - Günlük 6-14 sipariş, 30 gün boyunca
+        # - Her siparişin yaşına göre kargo durumu belirlenir
+        # - Kargo gecikmeli veya teslim edilmiş siparişlerden mesaj üretilir
+        # - Bugünkü mesajlar dashboard'a düşer
+        #
+        # Kargo lifecycle süreleri (gerçekçi):
+        #   preparing    → 4-8 saat sonra in_transit
+        #   in_transit   → 24-48 saat sonra at_facility
+        #   at_facility  → 4-12 saat sonra out_for_delivery
+        #   out_for_delivery → 2-6 saat sonra delivered
 
-        # Realistic lifecycle mix for active shipments
-        _shipped_statuses = (
-            ["preparing"] * 8
-            + ["in_transit"] * 14
-            + ["at_facility"] * 10
-            + ["out_for_delivery"] * 8
-        )
-        random.shuffle(_shipped_statuses)
-        # ~10% delay rate — realistic, not alarming
-        _n_active = len(_shipped_statuses)
-        _delayed_flags = [True] * max(1, _n_active // 10) + [False] * (_n_active - max(1, _n_active // 10))
-        random.shuffle(_delayed_flags)
-        _shipped_ix = 0
+        STAGE_HOURS = {
+            "preparing":        (4, 8),
+            "in_transit":       (24, 48),
+            "at_facility":      (4, 12),
+            "out_for_delivery": (2, 6),
+        }
+        ALL_STAGES = ["preparing", "in_transit", "at_facility", "out_for_delivery", "delivered"]
 
-        # ── Order timing strategy ──────────────────────────────────────────────
-        # Today: 2-4 fresh orders (pending/processing)
-        # Last 3 days: orders in transit / processing
-        # 4-10 days ago: mix of shipped/delivered
-        # 11-45 days ago: mostly delivered, some cancelled
-        def _order_status_for_age(days_old: int) -> OrderStatus:
-            if days_old == 0:
-                return random.choice([OrderStatus.pending, OrderStatus.pending, OrderStatus.processing])
-            elif days_old <= 1:
-                return random.choice([OrderStatus.pending, OrderStatus.processing, OrderStatus.processing])
-            elif days_old <= 3:
-                return random.choice([OrderStatus.processing, OrderStatus.shipped, OrderStatus.shipped])
-            elif days_old <= 7:
-                return random.choice([OrderStatus.shipped, OrderStatus.shipped, OrderStatus.delivered])
-            elif days_old <= 14:
-                return random.choice([OrderStatus.shipped, OrderStatus.delivered, OrderStatus.delivered, OrderStatus.delivered])
-            else:
-                return random.choice([OrderStatus.delivered, OrderStatus.delivered, OrderStatus.delivered, OrderStatus.cancelled])
+        orders_created = []
+        shipments_created = []
+        total_orders = 0
 
-        # Build a realistic age distribution for 150 orders
-        order_ages = (
-            [0] * 3 +           # today: 3 orders
-            [1] * 4 +           # yesterday: 4 orders
-            [2] * 5 +           # 2 days ago: 5 orders
-            [3] * 6 +           # 3 days ago: 6 orders
-            list(range(4, 8)) * 4 +    # 4-7 days: 4 per day = 16
-            list(range(8, 15)) * 3 +   # 8-14 days: 3 per day = 21
-            list(range(15, 46))        # 15-45 days: 1 per day = 31
-        )
-        # Pad to 150
-        while len(order_ages) < 150:
-            order_ages.append(random.randint(15, 45))
-        order_ages = order_ages[:150]
-        random.shuffle(order_ages)
+        for day_offset in range(30, -1, -1):  # 30 gün önce → bugün
+            day_base = today_start - timedelta(days=day_offset)
+            daily_count = random.randint(6, 14)
 
-        for age_days in order_ages:
-            customer = random.choice(customers)
-            city = random.choice(CITIES)
-            district = random.choice(DISTRICTS[city])
-            # Create time: random hour within that day
-            created = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=age_days)
-            created += timedelta(hours=random.randint(7, 20), minutes=random.randint(0, 59))
-            status = _order_status_for_age(age_days)
+            for _ in range(daily_count):
+                customer = random.choice(customers)
+                city = random.choice(CITIES)
+                district = random.choice(DISTRICTS[city])
+                hour = random.randint(7, 21)
+                minute = random.randint(0, 59)
+                created_at = day_base + timedelta(hours=hour, minutes=minute)
 
-            order = Order(
-                customer_id=customer.id,
-                status=status,
-                created_at=created,
-                updated_at=created + timedelta(hours=random.randint(1, 48)),
-                shipping_address=f"{district} Mah. No:{random.randint(1, 200)}, {city}",
-                tracking_number=None,
-            )
-            db.add(order)
-            db.flush()
+                if created_at > now:
+                    created_at = now - timedelta(minutes=random.randint(5, 120))
 
-            # 1–4 items per order
-            selected_products = random.sample(products, k=random.randint(1, 4))
-            for product in selected_products:
-                qty = random.randint(1, 3) if customer.customer_type == "bireysel" else random.randint(5, 20)
-                db.add(OrderItem(
-                    order_id=order.id,
-                    product_id=product.id,
-                    quantity=qty,
-                    unit_price=product.price,
-                ))
+                # Sipariş durumunu yaşa göre belirle
+                age_hours = (now - created_at).total_seconds() / 3600
+                age_days = age_hours / 24
 
-            # Shipments for shipped/delivered orders
-            if status in (OrderStatus.shipped, OrderStatus.delivered):
-                carrier = random.choice(CARRIERS)
-                tracking = _tracking_number(carrier)
-
-                ship_created = created + timedelta(hours=random.randint(2, 24))
-                if status == OrderStatus.delivered:
-                    ship_status = ShipmentStatus.delivered
-                    days_since = max(0, (now - created).days)
-                    d = random.randint(1, max(1, min(21, days_since))) if days_since > 0 else 1
-                    delivered_at = created + timedelta(days=d)
-                    if delivered_at > now:
-                        delivered_at = now - timedelta(hours=random.randint(4, 72))
-                    if delivered_at <= created:
-                        delivered_at = created + timedelta(hours=random.randint(12, 96))
-                    est_delivery = delivered_at - timedelta(hours=random.randint(18, 96))
-                    if est_delivery < created:
-                        est_delivery = created + timedelta(hours=2)
-                    if est_delivery > now:
-                        est_delivery = now - timedelta(days=1)
-                    ship_updated = delivered_at
-                else:
-                    st_key = _shipped_statuses[_shipped_ix] if _shipped_ix < len(_shipped_statuses) else "in_transit"
-                    _shipped_ix += 1
-                    ship_status = ShipmentStatus(st_key)
-                    is_delayed = (
-                        _delayed_flags[_shipped_ix - 1]
-                        if _shipped_ix - 1 < len(_delayed_flags)
-                        else random.random() < 0.10
-                    )
-                    if is_delayed:
-                        # Delayed: est_delivery was 1-3 days ago (not too extreme)
-                        est_delivery = now - timedelta(days=random.randint(1, 3))
+                if age_days <= 0.5:
+                    order_status = OrderStatus.pending
+                elif age_days <= 1.5:
+                    order_status = random.choice([OrderStatus.pending, OrderStatus.processing])
+                elif age_days <= 3:
+                    order_status = OrderStatus.processing
+                elif age_days <= 5:
+                    order_status = random.choice([OrderStatus.processing, OrderStatus.shipped])
+                elif age_days <= 25:
+                    # %85 delivered, %10 shipped, %5 cancelled
+                    r = random.random()
+                    if r < 0.85:
+                        order_status = OrderStatus.delivered
+                    elif r < 0.95:
+                        order_status = OrderStatus.shipped
                     else:
-                        # On time: delivery expected in 1-5 days
-                        est_delivery = now + timedelta(days=random.randint(1, 5))
-                    ship_updated = now - timedelta(hours=random.randint(1, 24))
+                        order_status = OrderStatus.cancelled
+                else:
+                    order_status = OrderStatus.delivered
 
-                origin_city = random.choice(CITIES)
-                shipment = Shipment(
-                    order_id=order.id,
-                    tracking_number=tracking,
-                    carrier=carrier,
-                    status=ship_status,
-                    created_at=ship_created,
-                    updated_at=ship_updated,
-                    estimated_delivery=est_delivery,
-                    recipient_name=customer.name,
-                    recipient_address=order.shipping_address,
+                q_min, q_max = QTY_RANGES.get(customer.customer_type, (1, 10))
+                n_items = random.randint(1, 4)
+                sel_products = random.sample(products, k=n_items)
+
+                order = Order(
+                    customer_id=customer.id,
+                    status=order_status,
+                    created_at=created_at,
+                    updated_at=created_at + timedelta(hours=random.randint(1, 4)),
+                    shipping_address=f"{district} Mah. No:{random.randint(1, 200)}, {city}",
+                    tracking_number=None,
                 )
-                db.add(shipment)
+                db.add(order)
                 db.flush()
-                order.tracking_number = tracking
 
-                # Build shipment timeline up to current status
-                all_stages = ["preparing", "in_transit", "at_facility", "out_for_delivery", "delivered"]
-                st_val = ship_status.value if hasattr(ship_status, "value") else str(ship_status)
-                current_idx = all_stages.index(st_val)
-                stage_time = shipment.created_at
-                end_cap = ship_updated if status == OrderStatus.delivered else now
+                order_total = 0.0
+                for p in sel_products:
+                    qty = random.randint(q_min, q_max)
+                    subtotal = qty * p.price
+                    order_total += subtotal
+                    db.add(OrderItem(order_id=order.id, product_id=p.id, quantity=qty, unit_price=p.price))
 
-                for stage in all_stages[:current_idx + 1]:
-                    loc_map = {
-                        "preparing":        f"{origin_city} Kooperatif Deposu",
-                        "in_transit":       f"{origin_city} Transfer Merkezi",
-                        "at_facility":      f"{city} Dağıtım Şubesi",
-                        "out_for_delivery": f"{city} {district} Dağıtım Noktası",
-                        "delivered":        f"{district}, {city}",
-                    }
-                    desc_map = {
-                        "preparing":        "Ürünler paketlendi, kargo taşıyıcıya hazır.",
-                        "in_transit":       f"Kargo {carrier} tarafından teslim alındı.",
-                        "at_facility":      f"Kargo {city} şubesine ulaştı.",
-                        "out_for_delivery": "Kargo dağıtım aracına yüklendi.",
-                        "delivered":        "Kargo başarıyla teslim edildi.",
-                    }
-                    ts = min(stage_time, end_cap)
-                    db.add(ShipmentUpdate(
-                        shipment_id=shipment.id,
-                        status=stage,
-                        location=loc_map[stage],
-                        description=desc_map[stage],
-                        timestamp=ts,
-                    ))
-                    stage_time = ts + timedelta(hours=random.randint(4, 18))
+                orders_created.append(order)
+                total_orders += 1
 
-                shipments_created += 1
+                # Kargo oluştur (shipped veya delivered için)
+                if order_status in (OrderStatus.shipped, OrderStatus.delivered, OrderStatus.cancelled):
+                    carrier = random.choice(CARRIERS)
+                    tracking = _tracking(carrier)
+                    origin_city = random.choice(CITIES)
 
-            orders.append(order)
+                    ship_created = created_at + timedelta(hours=random.randint(2, 8))
+
+                    # Kargo durumunu gerçekçi zaman bazlı hesapla
+                    # Her aşama için deterministic süre (sipariş id bazlı)
+                    stage_cursor = ship_created
+                    stage_times = {"preparing": ship_created}
+
+                    for stage in ["preparing", "in_transit", "at_facility", "out_for_delivery"]:
+                        min_h, max_h = STAGE_HOURS[stage]
+                        duration = timedelta(hours=min_h + (order.id % max(1, max_h - min_h)))
+                        stage_times[stage + "_end"] = stage_cursor + duration
+                        stage_cursor = stage_cursor + duration
+
+                    delivered_time = stage_cursor  # gerçek teslim zamanı
+
+                    if order_status == OrderStatus.delivered:
+                        ship_status = ShipmentStatus.delivered
+                        # est_delivery: teslimden biraz önce veya sonra (bazen geç)
+                        on_time = random.random() < 0.88  # %88 zamanında
+                        if on_time:
+                            est_delivery = delivered_time - timedelta(hours=random.randint(2, 24))
+                        else:
+                            est_delivery = delivered_time - timedelta(days=random.randint(1, 3))
+                        final_time = delivered_time
+                    elif order_status == OrderStatus.cancelled:
+                        ship_status = ShipmentStatus.preparing
+                        est_delivery = ship_created + timedelta(days=5)
+                        final_time = ship_created
+                    else:
+                        # shipped — kargo yolda, nerede olduğunu zamanla hesapla
+                        est_delivery = ship_created + timedelta(days=5)
+                        # Hangi aşamada?
+                        current_stage = "preparing"
+                        for stage in ALL_STAGES[:-1]:
+                            end_key = stage + "_end"
+                            if stage_times.get(end_key, now + timedelta(days=999)) <= now:
+                                idx = ALL_STAGES.index(stage)
+                                current_stage = ALL_STAGES[min(idx + 1, len(ALL_STAGES) - 2)]
+                            else:
+                                break
+                        ship_status = ShipmentStatus(current_stage)
+                        # %12 gecikme
+                        if random.random() < 0.12:
+                            est_delivery = now - timedelta(hours=random.randint(6, 48))
+                        final_time = now - timedelta(hours=random.randint(1, 12))
+
+                    shipment = Shipment(
+                        order_id=order.id,
+                        tracking_number=tracking,
+                        carrier=carrier,
+                        status=ship_status,
+                        created_at=ship_created,
+                        updated_at=final_time,
+                        estimated_delivery=est_delivery,
+                        recipient_name=customer.name,
+                        recipient_address=order.shipping_address,
+                    )
+                    db.add(shipment)
+                    db.flush()
+                    order.tracking_number = tracking
+
+                    # Shipment timeline oluştur
+                    st_val = ship_status.value if hasattr(ship_status, "value") else str(ship_status)
+                    current_idx = ALL_STAGES.index(st_val)
+                    stage_cursor = ship_created
+
+                    for stage in ALL_STAGES[:current_idx + 1]:
+                        loc_map = {
+                            "preparing":        f"{origin_city} Kooperatif Deposu",
+                            "in_transit":       f"{origin_city} Transfer Merkezi",
+                            "at_facility":      f"{city} Dağıtım Şubesi",
+                            "out_for_delivery": f"{city} {district} Dağıtım Noktası",
+                            "delivered":        f"{district}, {city}",
+                        }
+                        desc_map = {
+                            "preparing":        "Ürünler paketlendi, kargo taşıyıcıya hazır.",
+                            "in_transit":       f"Kargo {carrier} tarafından teslim alındı.",
+                            "at_facility":      f"Kargo {city} şubesine ulaştı.",
+                            "out_for_delivery": "Kargo dağıtım aracına yüklendi.",
+                            "delivered":        "Kargo başarıyla teslim edildi.",
+                        }
+                        ts = stage_cursor
+                        if stage == st_val and order_status == OrderStatus.delivered:
+                            ts = delivered_time
+                        ts = min(ts, now)
+                        db.add(ShipmentUpdate(
+                            shipment_id=shipment.id,
+                            status=stage,
+                            location=loc_map[stage],
+                            description=desc_map[stage],
+                            timestamp=ts,
+                        ))
+                        if stage in STAGE_HOURS:
+                            min_h, max_h = STAGE_HOURS[stage]
+                            stage_cursor = ts + timedelta(hours=min_h + (order.id % max(1, max_h - min_h)))
+                        else:
+                            stage_cursor = ts + timedelta(hours=4)
+
+                    shipments_created.append(shipment)
+
+                    # ── Mesaj üret (kargo durumuna göre) ──────────────────────
+                    msg_chance = random.random()
+
+                    # Gecikmiş kargolar → gecikme şikayeti (%70 ihtimal)
+                    ship_est = est_delivery if isinstance(est_delivery, datetime) else now
+                    is_delayed = (ship_est < now) and (order_status == OrderStatus.shipped)
+                    if is_delayed and msg_chance < 0.70:
+                        tmpl = random.choice(DELAY_MESSAGES)
+                        subj, body_t, cat, urg = tmpl
+                        days_late = max(1, int((now - ship_est).total_seconds() / 86400))
+                        body = body_t.format(
+                            order_id=order.id,
+                            tracking=tracking,
+                            carrier=carrier,
+                            days=days_late,
+                            est_date=ship_est.strftime("%d.%m.%Y"),
+                            product=sel_products[0].name,
+                            item_count=n_items,
+                            qty=random.randint(5, 30),
+                        )
+                        hours_ago = random.randint(0, 36)
+                        msg_time = now - timedelta(hours=hours_ago)
+                        db.add(CustomerMessage(
+                            customer_id=customer.id,
+                            direction="inbound",
+                            subject=subj,
+                            body=body,
+                            created_at=msg_time,
+                            is_read=hours_ago > 24,
+                            ai_generated=False,
+                            category=cat,
+                            urgency=urg,
+                            ai_summary=brief_summary(customer.name, cat, subj),
+                            related_order_id=order.id,
+                            related_shipment_id=shipment.id,
+                        ))
+
+                    # Teslim edilmişlerden geri bildirim (%25 ihtimal)
+                    elif order_status == OrderStatus.delivered and msg_chance < 0.25:
+                        tmpl = random.choice(DELIVERY_COMPLAINT_MESSAGES)
+                        subj, body_t, cat, urg = tmpl
+                        body = body_t.format(
+                            order_id=order.id,
+                            product=sel_products[0].name,
+                            item_count=n_items,
+                            qty=random.randint(5, 30),
+                            tracking=tracking,
+                            carrier=carrier,
+                            days=1,
+                            est_date=(now - timedelta(days=1)).strftime("%d.%m.%Y"),
+                        )
+                        # Mesaj teslimden 1-72 saat sonra
+                        msg_time = delivered_time + timedelta(hours=random.randint(2, 72))
+                        if msg_time > now:
+                            msg_time = now - timedelta(hours=random.randint(1, 12))
+                        hours_ago = (now - msg_time).total_seconds() / 3600
+                        db.add(CustomerMessage(
+                            customer_id=customer.id,
+                            direction="inbound",
+                            subject=subj,
+                            body=body,
+                            created_at=msg_time,
+                            is_read=hours_ago > 24,
+                            ai_generated=False,
+                            category=cat,
+                            urgency=urg,
+                            ai_summary=brief_summary(customer.name, cat, subj),
+                            related_order_id=order.id,
+                            related_shipment_id=shipment.id,
+                        ))
 
         db.flush()
-        print(f"✓ {len(orders)} orders, {shipments_created} shipments with timelines")
 
-        # ── Customer Messages ─────────────────────────────────────────────────
-        # Message age distribution: 5 today, 4 yesterday, rest spread over last 5 days
-        msg_ages_hours = (
-            [random.randint(0, 10) for _ in range(5)] +
-            [random.randint(11, 23) for _ in range(4)] +
-            [random.randint(24, 48) for _ in range(4)] +
-            [random.randint(49, 72) for _ in range(3)] +
-            [random.randint(73, 120) for _ in range(4)]
-        )
-        random.shuffle(msg_ages_hours)
-
-        msg_count = 0
-        msg_customers = random.sample(customers, k=len(msg_ages_hours))
-        for i, customer in enumerate(msg_customers):
-            subject = random.choice(COMPLAINT_SUBJECTS)
-            product_name = random.choice(products).name
-            body = random.choice(COMPLAINT_BODIES).format(
-                days=random.randint(2, 6),
-                product=product_name,
-                qty=random.randint(10, 50),
-            )
-            cat, urg = classify_customer_message(subject)
-            cust_orders = [o for o in orders if o.customer_id == customer.id]
+        # ── Genel sorgular (siparişten bağımsız) ─────────────────────────────
+        general_count = 0
+        for _ in range(15):
+            customer = random.choice(customers)
+            tmpl = random.choice(GENERAL_MESSAGES)
+            subj, body_t, cat, urg = tmpl
+            product = random.choice(products)
+            cust_orders = [o for o in orders_created if o.customer_id == customer.id]
             co = random.choice(cust_orders) if cust_orders else None
-            cid = co.id if co else None
-            sh = None
-            if cid:
-                sh_row = db.query(Shipment).filter(Shipment.order_id == cid).first()
-                sh = sh_row.id if sh_row else None
-            hours_ago = msg_ages_hours[i] if i < len(msg_ages_hours) else random.randint(0, 120)
+            body = body_t.format(
+                order_id=co.id if co else "—",
+                product=product.name,
+                qty=random.randint(10, 50),
+                tracking="—", carrier="—", days=2,
+                est_date=(now + timedelta(days=3)).strftime("%d.%m.%Y"),
+                item_count=2,
+            )
+            hours_ago = random.randint(0, 96)
             msg_time = now - timedelta(hours=hours_ago)
-            # Messages from today/yesterday are unread; older ones are mostly read
-            is_recent = hours_ago < 24
             db.add(CustomerMessage(
                 customer_id=customer.id,
                 direction="inbound",
-                subject=subject,
+                subject=subj,
                 body=body,
                 created_at=msg_time,
-                is_read=False if is_recent else (random.random() < 0.5),
+                is_read=hours_ago > 24,
                 ai_generated=False,
                 category=cat,
                 urgency=urg,
-                ai_summary=brief_summary(customer.name, cat, subject),
-                related_order_id=cid,
-                related_shipment_id=sh,
+                ai_summary=brief_summary(customer.name, cat, subj),
+                related_order_id=co.id if co else None,
             ))
-            msg_count += 1
+            general_count += 1
 
-        # A few outbound replies
-        for customer in random.sample(customers, k=3):
+        # ── Giden yanıtlar ────────────────────────────────────────────────────
+        reply_count = 0
+        for customer in random.sample(customers, k=8):
+            cust_orders = [o for o in orders_created if o.customer_id == customer.id]
+            co = random.choice(cust_orders) if cust_orders else None
+            sh = None
+            if co:
+                from models import Shipment as Sh
+                sh_row = db.query(Sh).filter(Sh.order_id == co.id).first()
+                if sh_row:
+                    sh = sh_row
+                    st_val = sh.status.value if hasattr(sh.status, "value") else str(sh.status)
+                    est = sh.estimated_delivery
+                    est_str = est.strftime("%d.%m.%Y") if isinstance(est, datetime) else str(est)
+                    if st_val != "delivered":
+                        body = (
+                            f"Merhaba {customer.name.split()[0]}, #{co.id} numaralı siparişinizle "
+                            f"ilgili inceleme yaptık. Kargonuz ({sh.tracking_number}) şu anda "
+                            f"yolda olup tahmini teslimat tarihi {est_str}. "
+                            "Gecikme yaşanması durumunda sizi bilgilendireceğiz."
+                        )
+                    else:
+                        body = (
+                            f"Merhaba {customer.name.split()[0]}, talebinizi aldık. "
+                            "İncelememiz tamamlandıktan sonra en kısa sürede dönüş yapacağız."
+                        )
+                else:
+                    body = "Merhaba, talebinizi aldık. En kısa sürede geri dönüş yapacağız."
+            else:
+                body = "Merhaba, talebinizi aldık. En kısa sürede geri dönüş yapacağız."
+
             db.add(CustomerMessage(
                 customer_id=customer.id,
                 direction="outbound",
                 subject="Re: Sipariş Durumu Hakkında",
-                body="Merhaba, siparişinizle ilgili inceleme yaptık. Kargonuz yola çıkmış olup en geç 2 iş günü içinde teslim edilmesi beklenmektedir. Anlayışınız için teşekkür ederiz.",
-                created_at=now - timedelta(hours=random.randint(2, 48)),
+                body=body,
+                created_at=now - timedelta(hours=random.randint(1, 48)),
                 is_read=True,
                 ai_generated=True,
+                related_order_id=co.id if co else None,
+                related_shipment_id=sh.id if sh else None,
             ))
-            msg_count += 1
+            reply_count += 1
 
-        print(f"✓ {msg_count} customer messages created (5 today, 4 yesterday, rest spread)")
+        db.flush()
 
-        # ── Operational Alerts ────────────────────────────────────────────────
-        for type_, severity, title, description, entity_id in INITIAL_ALERTS:
-            db.add(OperationalAlert(
-                type=type_,
-                severity=severity,
-                title=title,
-                description=description,
-                is_resolved=False,
-                created_at=_rand_date(days_ago_max=2),
-                related_entity_id=entity_id,
-            ))
-        print(f"✓ {len(INITIAL_ALERTS)} operational alerts seeded")
+        # Mesaj özeti
+        from sqlalchemy import text as sqlt
+        msg_stats = db.execute(sqlt("""
+            SELECT category, COUNT(*) as cnt FROM customer_messages
+            WHERE direction='inbound' GROUP BY category ORDER BY cnt DESC
+        """)).fetchall()
+        total_msgs = sum(r.cnt for r in msg_stats)
+        today_msgs = db.execute(sqlt(
+            "SELECT COUNT(*) FROM customer_messages WHERE direction='inbound' AND DATE(created_at)=DATE('now')"
+        )).scalar()
+        print(f"✓ {total_orders} orders, {len(shipments_created)} shipments")
+        print(f"✓ {total_msgs} inbound messages ({today_msgs} today) + {reply_count} outbound")
+        print(f"  Kategoriler: {', '.join(f'{r.category}:{r.cnt}' for r in msg_stats)}")
 
+        # ── Operasyonel alertler — gerçek scan ───────────────────────────────
         db.commit()
+        import simulation as sim
+        scan_db = SessionLocal()
+        try:
+            scan_now = datetime.utcnow()
+            scan_today = scan_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            sim._scan_delayed_shipments(scan_db, scan_now)
+            sim._scan_low_stock_hourly(scan_db)
+            sim._scan_message_complaints(scan_db, scan_today)
+            sim._scan_overdue_orders(scan_db, scan_now)
+            sim._scan_restock_suggestions(scan_db, scan_now)
+            scan_db.commit()
+            alert_count = scan_db.query(OperationalAlert).count()
+            print(f"✓ {alert_count} operational alerts from real-time scans")
+        finally:
+            scan_db.close()
+
         print("\n✅ Database seeded successfully!")
         print("   Login: admin@demo.com / demo123")
 
     except Exception as e:
         db.rollback()
         print(f"\n❌ Seed failed: {e}")
+        import traceback; traceback.print_exc()
         raise
     finally:
         db.close()

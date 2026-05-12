@@ -1,6 +1,6 @@
 # Kooperatif Hub — AI-Powered Operations Assistant
 
-Tarım ve gıda kooperatifleri için geliştirilmiş yapay zeka destekli operasyon yönetim platformu. Groq LLM (Llama 3.3 70B) ile doğal dil sorgulama, gerçek zamanlı sipariş/kargo/stok takibi ve otomatik operasyonel tarama.
+Tarım ve gıda kooperatifleri için geliştirilmiş yapay zeka destekli operasyon yönetim platformu. Google Gemini 2.5 Flash ile doğal dil sorgulama, 4 özerk AI ajanı ile sürekli operasyonel analiz ve gerçek zamanlı sipariş/kargo/stok takibi.
 
 ---
 
@@ -10,26 +10,33 @@ Tarım ve gıda kooperatifleri için geliştirilmiş yapay zeka destekli operasy
 ┌─────────────────────────────────────────────────────────────┐
 │              FRONTEND  (React 19 + Vite + Tailwind CSS v4)  │
 │  Dashboard · Siparişler · Kargolar · Envanter · Mesajlar    │
-│  AI Chat Panel (streaming tool call görselleştirmesi)       │
+│  AI Chat Panel · Simülasyon Paneli · Agent Activity Log     │
 └──────────────────────────┬──────────────────────────────────┘
                            │  REST API (JWT)
 ┌──────────────────────────▼──────────────────────────────────┐
-│                  BACKEND  (FastAPI + Python)                 │
+│                  BACKEND  (FastAPI + Python 3.11)            │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │  AI Agent — Groq Llama 3.3 70B (tool calling)       │   │
+│  │  Chat Agent — Gemini 2.5 Flash (tool calling)       │   │
 │  │  17 araç: sipariş, kargo, stok, uyarı, SQL...       │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │  Simulation Engine  (asyncio background tasks)      │   │
-│  │  45s tick: sipariş üretimi + kargo durum geçişleri  │   │
-│  │  3600s scan: gecikme · şikayet · stok · yenileme    │   │
+│  │  Agent Orchestrator  (4 özerk AI ajanı)             │   │
+│  │  operational · shipment · inventory · customer_issue │   │
+│  │  Gemini 2.5 Flash ile periyodik LLM içgörüsü        │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Simulation Engine  (background tasks)              │   │
+│  │  Sipariş üretimi, kargo pipeline, şikayet sim.      │   │
+│  │  Manuel: sipariş ekle, müşteri ekle, geciktir...    │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  Data Layer — SQLAlchemy + SQLite                   │   │
 │  │  orders · shipments · inventory · messages · alerts │   │
+│  │  ai_insights (LLM-generated, pre-cached)            │   │
 │  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -38,17 +45,29 @@ Tarım ve gıda kooperatifleri için geliştirilmiş yapay zeka destekli operasy
 
 ## Özellikler
 
-- **AI Chat Agent** — Türkçe doğal dil sorguları, Groq Llama 3.3 70B ile araç çağrısı (tool calling)
-- **Canlı Dashboard** — Bugünkü siparişler, aktif teslimatlar, stok uyarıları, zamanında teslimat oranı
-- **Otomatik Sipariş Üretimi** — Her 45 saniyede %20 olasılıkla yeni sipariş simülasyonu (gerçek + yeni müşteri)
-- **Saatlik Operasyonel Tarama** — Gecikmiş kargolar, müşteri şikayet kümeleri, düşük stok, vadesi geçmiş siparişler, yenileme önerileri
-- **Müşteri Mesajları** — Kural tabanlı kategori/öncelik sınıflandırması, yeni mesaj oluşturma
-- **Kargo Takibi** — Durum geçişleri (preparing → in_transit → at_facility → out_for_delivery → delivered), timeline görünümü
+- **AI Chat Agent** — Türkçe doğal dil sorguları, Gemini 2.5 Flash ile araç çağrısı (tool calling)
+- **4 Özerk AI Ajanı** — Operasyon, kargo, envanter ve müşteri ajanları periyodik olarak LLM içgörüsü üretir ve `ai_insights` tablosuna yazar; dashboard bu verileri okur, anlık LLM çağrısı yapmaz
+- **Agent Activity Log** — Her ajanın son çalışma zamanı ve ürettiği içgörü sayısı dashboard'da görünür
+- **Canlı Dashboard** — Bugünkü siparişler, aktif teslimatlar, stok uyarıları, zamanında teslimat oranı, AI operasyon analizi
+- **Simülasyon Paneli** — Sipariş Ekle, Müşteri Ekle, Kargo Geciktir, Stok Düşür, Şikayet Oluştur, Teslimat Yap, Anomali Yarat
+- **Kargo Pipeline** — Otomatik durum geçişleri (preparing → in_transit → at_facility → out_for_delivery → delivered)
+- **Müşteri Mesajları** — Kategori/öncelik sınıflandırması, AI aksiyon önerisi, yeni mesaj oluşturma
 - **Envanter Yönetimi** — Stok seviyeleri, kritik ürün uyarıları, hareket geçmişi
 
 ---
 
-## AI Agent Araçları
+## AI Ajanları
+
+| Ajan | Çalışma Sıklığı | Görev |
+|---|---|---|
+| `operational` | 15 dakikada bir | Gecikmiş kargolar, bekleyen siparişler, düşük stok, şikayet kümeleri, günlük ciro |
+| `shipment` | 10 dakikada bir | Kargo pipeline'ı ilerletir, gecikme tespiti, anlık durum analizi |
+| `inventory` | 30 dakikada bir | Yeniden sipariş noktası altındaki ürünler, 14 günlük tüketim trendleri |
+| `customer_issue` | 30 dakikada bir | Bugünkü mesaj dağılımı, acil okunmamış mesajlar, kategori trendi |
+
+---
+
+## AI Chat Agent Araçları
 
 | Araç | Açıklama |
 |---|---|
@@ -84,7 +103,7 @@ pip install -r requirements.txt
 
 # API anahtarını ayarla
 cp .env.example .env
-# .env dosyasına GROQ_API_KEY değerini ekle
+# .env dosyasına GEMINI_API_KEY değerini ekle (Google AI Studio'dan ücretsiz alınır)
 
 # Veritabanını oluştur ve seed et
 python seed.py
@@ -104,7 +123,15 @@ npm run dev
 # → http://localhost:5173
 ```
 
-**Demo giriş:** `admin@coop.com` / `admin123`
+**Demo giriş:** `admin@demo.com` / `admin123`
+
+---
+
+## Ortam Değişkenleri
+
+```env
+GEMINI_API_KEY=...   # Google AI Studio → aistudio.google.com/apikey (ücretsiz)
+```
 
 ---
 
@@ -113,7 +140,7 @@ npm run dev
 | Veri | Detay |
 |---|---|
 | Müşteriler | 30 kurumsal + 20 bireysel (gerçekçi Türkçe isim/iletişim) |
-| Ürünler | 10 ürün: Domates Salçası, Zeytinyağı, Organik Bal vb. |
+| Ürünler | 20 ürün: Domates Salçası, Zeytinyağı, Karadut Pekmezi vb. |
 | Siparişler | 150 sipariş (son 30 gün, bugün dahil aktif siparişler) |
 | Kargolar | Her siparişe bağlı kargo + durum geçmişi |
 | Müşteri Mesajları | Kategorize edilmiş gelen mesajlar |
@@ -134,8 +161,10 @@ GET  /shipments/{id}                  — Kargo detayı
 GET  /inventory                       — Stok seviyeleri
 GET  /messages                        — Müşteri mesajları
 POST /messages                        — Yeni mesaj oluştur
-GET  /operational-alerts              — Operasyonel uyarılar
-GET  /analytics/demand                — Talep trendleri
+GET  /insights                        — AI içgörüleri (ajan/severity filtreli)
+POST /insights/{id}/dismiss           — İçgörüyü kapat
+GET  /insights/agent-status           — Ajan son çalışma zamanları
+POST /simulate/event                  — Simülasyon olayı tetikle
 GET  /docs                            — Swagger UI
 ```
 
@@ -146,7 +175,8 @@ GET  /docs                            — Swagger UI
 | Katman | Teknoloji |
 |---|---|
 | Backend | Python 3.11+, FastAPI, Uvicorn |
-| AI | Groq API — Llama 3.3 70B Versatile |
+| AI (Chat) | Google Gemini 2.5 Flash — tool calling |
+| AI (Ajanlar) | Google Gemini 2.5 Flash — periyodik içgörü üretimi |
 | Veritabanı | SQLite + SQLAlchemy 2.x |
 | Kimlik Doğrulama | JWT (python-jose) |
 | Frontend | React 19, Vite, Tailwind CSS v4 |

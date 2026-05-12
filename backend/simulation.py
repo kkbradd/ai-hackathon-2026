@@ -1,10 +1,8 @@
 """
 Background simulation engine — makes the cooperative feel operationally alive.
-Runs as an asyncio task via FastAPI lifespan, ticking every 45 seconds.
-Each tick advances shipments, drains inventory, and may generate complaints or anomalies.
-A second hourly loop runs deterministic operational scans and writes alerts.
+Generates new orders, advances shipments through their lifecycle, and occasionally
+produces complaint messages. Intelligence analysis is handled by the AI agent layer.
 """
-import asyncio
 import random
 from datetime import datetime, timedelta
 from typing import Optional
@@ -24,8 +22,26 @@ from models import (
     Product,
 )
 
-TICK_INTERVAL = 45   # seconds
-HOURLY_INTERVAL = 3600  # seconds
+DAILY_ORDER_TARGET_MIN = 8
+DAILY_ORDER_TARGET_MAX = 15
+
+QTY_MULTIPLIERS = {
+    "restoran":     (10, 50),
+    "market":       (20, 80),
+    "bakkal":       (5,  25),
+    "kafe":         (3,  15),
+    "butik":        (2,  10),
+    "bireysel":     (1,   5),
+    "yerel_isletme":(5,  20),
+    "kurumsal":     (10, 40),
+}
+
+PIPELINE_DELAYS = {
+    "preparing":        (4,  8),
+    "in_transit":       (24, 48),
+    "at_facility":      (4,  12),
+    "out_for_delivery": (2,  6),
+}
 
 COMPLAINT_TEMPLATES = [
     ("Teslimat gecikmesi",
@@ -95,48 +111,32 @@ def _new_tracking_number(carrier: str) -> str:
     return f"{prefix}{random.randint(900000000, 999999999)}"
 
 
-async def run_loop():
-    """Main simulation loop. Runs forever until cancelled."""
-    print(f"[Simulation] Engine started — ticking every {TICK_INTERVAL}s")
-    while True:
-        await asyncio.sleep(TICK_INTERVAL)
-        try:
-            _tick()
-        except Exception as exc:
-            print(f"[Simulation] Tick error: {exc}")
-
-
-def _tick():
-    db = SessionLocal()
-    try:
-        actions = [
-            _advance_shipment_status,
-            _advance_shipment_status,   # double-weighted
-            _decrease_inventory,
-            _maybe_generate_complaint,
-            _maybe_create_anomaly,
-            _generate_new_order,
-        ]
-        chosen = random.sample(actions, k=random.randint(1, 2))
-        for action in chosen:
-            action(db)
-        db.commit()
-    finally:
-        db.close()
-
-
 def _generate_new_order(db):
-    """20% chance per tick: create a new Order + OrderItems + Shipment."""
-    if random.random() > 0.20:
+    """Create a new order based on daily target pacing."""
+    now = datetime.utcnow()
+
+    today_count = db.execute(
+        text("SELECT COUNT(*) FROM orders WHERE DATE(created_at) = DATE('now')")
+    ).scalar() or 0
+
+    hour = now.hour
+    expected_ratio = min(hour / 18.0, 1.0)
+    daily_target = random.randint(DAILY_ORDER_TARGET_MIN, DAILY_ORDER_TARGET_MAX)
+    expected_count = daily_target * expected_ratio
+
+    if today_count >= expected_count * 1.5 and random.random() > 0.15:
+        return
+    if today_count >= DAILY_ORDER_TARGET_MAX:
+        return
+    if random.random() > 0.50:
         return
 
     products = db.query(Product).all()
     if not products:
         return
 
-    now = datetime.utcnow()
     customer = None
-    use_existing = random.random() < 0.70
+    use_existing = random.random() < 0.75
 
     if use_existing:
         cutoff = now - timedelta(days=30)
@@ -178,7 +178,9 @@ def _generate_new_order(db):
         db.add(customer)
         db.flush()
 
-    # Build item list based on customer history or random
+    ctype = getattr(customer, "customer_type", "bireysel") or "bireysel"
+    qty_min, qty_max = QTY_MULTIPLIERS.get(ctype, (1, 5))
+
     past_items = db.execute(
         text("""
             SELECT oi.product_id, AVG(oi.quantity) AS avg_qty
@@ -197,13 +199,14 @@ def _generate_new_order(db):
         for row in selected_rows:
             p = db.query(Product).filter(Product.id == row.product_id).first()
             if p:
-                base_qty = max(1, int(row.avg_qty))
+                base_qty = max(qty_min, int(row.avg_qty))
+                qty = max(qty_min, round(base_qty * random.uniform(0.7, 1.3)))
                 selected_products.append(p)
-                quantities.append(max(1, round(base_qty * random.uniform(0.7, 1.3))))
+                quantities.append(min(qty, qty_max))
     else:
         n = random.randint(1, 3)
         selected_products = random.sample(products, k=min(n, len(products)))
-        quantities = [random.randint(1, 5) for _ in selected_products]
+        quantities = [random.randint(qty_min, qty_max) for _ in selected_products]
 
     if not selected_products:
         return
@@ -225,6 +228,26 @@ def _generate_new_order(db):
 
     for p, qty in zip(selected_products, quantities):
         db.add(OrderItem(order_id=order.id, product_id=p.id, quantity=qty, unit_price=p.price))
+        inv = db.query(Inventory).filter(Inventory.product_id == p.id).first()
+        if inv:
+            package_size = 1.0
+            try:
+                pkg = p.package_size or "1"
+                package_size = float(pkg.split()[0])
+            except (ValueError, AttributeError, IndexError):
+                package_size = 1.0
+            consumed = round(qty * package_size, 2)
+            inv.quantity_kg = round(max(0.0, inv.quantity_kg - consumed), 2)
+            inv.last_updated = now
+            db.add(InventoryMovement(
+                product_id=p.id,
+                order_id=order.id,
+                quantity_change=-consumed,
+                movement_type="order_fulfillment",
+                timestamp=now,
+            ))
+            if inv.quantity_kg < inv.min_threshold:
+                _ensure_low_stock_alert(db, inv)
 
     shipment = Shipment(
         order_id=order.id,
@@ -270,63 +293,91 @@ def _generate_new_order(db):
             ))
 
 
-def _advance_shipment_status(db):
-    """Advance one random non-terminal shipment to its next lifecycle stage."""
-    candidates = db.query(Shipment).filter(
-        Shipment.status.in_(list(TRANSITIONS.keys()))
-    ).all()
-    if not candidates:
-        return
+def _advance_shipments_pipeline(db):
+    """Time-based pipeline: advance ALL shipments that have waited long enough."""
+    now = datetime.utcnow()
 
-    shipment = random.choice(candidates)
-    next_status = TRANSITIONS[shipment.status]
-    shipment.status = next_status
-    shipment.updated_at = datetime.utcnow()
+    for current_status, next_status in TRANSITIONS.items():
+        min_h, max_h = PIPELINE_DELAYS[current_status]
 
-    loc, desc = SHIPMENT_ADVANCE_LOCATIONS.get(next_status, ("Bilinmeyen Konum", "Kargo hareket etti."))
-    db.add(ShipmentUpdate(
-        shipment_id=shipment.id,
-        status=next_status,
-        location=loc,
-        description=desc,
-        timestamp=datetime.utcnow(),
-    ))
+        rows = db.execute(
+            text("""
+                SELECT s.id, MAX(su.timestamp) AS last_update
+                FROM shipments s
+                JOIN shipment_updates su ON su.shipment_id = s.id
+                WHERE s.status = :status
+                GROUP BY s.id
+            """),
+            {"status": current_status},
+        ).fetchall()
 
-    if next_status == "delivered":
-        _resolve_alert_for_entity(db, "delayed_shipment", shipment.id)
+        for row in rows:
+            if row.last_update is None:
+                continue
+            last_update = row.last_update
+            if isinstance(last_update, str):
+                for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+                    try:
+                        last_update = datetime.strptime(last_update, fmt)
+                        break
+                    except ValueError:
+                        continue
+            elapsed_hours = (now - last_update).total_seconds() / 3600
+            threshold = min_h + (row.id % max(1, max_h - min_h))
+            if elapsed_hours < threshold:
+                continue
 
+            shipment = db.query(Shipment).filter(Shipment.id == row.id).first()
+            if not shipment:
+                continue
 
-def _decrease_inventory(db):
-    """Consume inventory for a recent processing order, trigger low-stock alerts if needed."""
-    recent_orders = (
-        db.query(Order)
-        .filter(Order.status == OrderStatus.processing)
-        .order_by(Order.created_at.desc())
-        .limit(20)
-        .all()
-    )
-    if not recent_orders:
-        return
+            shipment.status = next_status
+            shipment.updated_at = now
+            loc, desc = SHIPMENT_ADVANCE_LOCATIONS.get(next_status, ("Bilinmeyen Konum", "Kargo hareket etti."))
+            db.add(ShipmentUpdate(
+                shipment_id=shipment.id,
+                status=next_status,
+                location=loc,
+                description=desc,
+                timestamp=now,
+            ))
 
-    order = random.choice(recent_orders)
-    for item in order.items:
-        inv = db.query(Inventory).filter(Inventory.product_id == item.product_id).first()
-        if not inv:
+            if next_status == "delivered":
+                order = db.query(Order).filter(Order.id == shipment.order_id).first()
+                if order:
+                    order.status = OrderStatus.delivered
+                _resolve_alert_for_entity(db, "delayed_shipment", shipment.id)
+
+    overdue = db.execute(
+        text("""
+            SELECT id FROM shipments
+            WHERE status NOT IN ('delivered','failed','returned')
+              AND estimated_delivery < :now
+        """),
+        {"now": now},
+    ).fetchall()
+    for row in overdue:
+        s = db.query(Shipment).filter(Shipment.id == row.id).first()
+        if not s:
             continue
-        consumed = round(min(item.quantity * random.uniform(0.3, 0.8), inv.quantity_kg), 2)
-        if consumed <= 0:
-            continue
-        inv.quantity_kg = round(max(0.0, inv.quantity_kg - consumed), 2)
-        inv.last_updated = datetime.utcnow()
-        db.add(InventoryMovement(
-            product_id=item.product_id,
-            order_id=order.id,
-            quantity_change=-consumed,
-            movement_type="order_fulfillment",
-            timestamp=datetime.utcnow(),
-        ))
-        if inv.quantity_kg < inv.min_threshold:
-            _ensure_low_stock_alert(db, inv)
+        existing = db.query(OperationalAlert).filter(
+            OperationalAlert.type == "delayed_shipment",
+            OperationalAlert.related_entity_id == s.id,
+            OperationalAlert.is_resolved == False,
+        ).first()
+        if not existing:
+            db.add(OperationalAlert(
+                type="delayed_shipment",
+                severity="critical",
+                title=f"Kargo {s.tracking_number} Gecikti",
+                description=(
+                    f"{s.carrier} tarafından taşınan kargo tahmini teslimat tarihini geçti. "
+                    "Müşteri bilgilendirmesi gerekiyor."
+                ),
+                is_resolved=False,
+                created_at=now,
+                related_entity_id=s.id,
+            ))
 
 
 def _maybe_generate_complaint(db):
@@ -377,43 +428,6 @@ def _maybe_generate_complaint(db):
         ))
 
 
-def _maybe_create_anomaly(db):
-    """5% chance per tick: detect stuck shipment and create an anomaly alert."""
-    if random.random() > 0.05:
-        return
-    overdue_threshold = datetime.utcnow() - timedelta(days=1)
-    stuck = (
-        db.query(Shipment)
-        .filter(
-            Shipment.status == ShipmentStatus.in_transit,
-            Shipment.estimated_delivery < overdue_threshold,
-        )
-        .first()
-    )
-    if not stuck:
-        return
-    existing = db.query(OperationalAlert).filter(
-        OperationalAlert.type == "anomaly",
-        OperationalAlert.related_entity_id == stuck.id,
-        OperationalAlert.is_resolved == False,
-    ).first()
-    if existing:
-        return
-    db.add(OperationalAlert(
-        type="anomaly",
-        severity="critical",
-        title=f"Kargo {stuck.tracking_number} Beklenmedik Durum",
-        description=(
-            f"{stuck.carrier} kargosunda sistem anomalisi tespit edildi. "
-            f"Tahmini teslimat {stuck.estimated_delivery.strftime('%d.%m.%Y')} "
-            f"tarihiydi ve kargo hâlâ yolda. Manuel kontrol gerekiyor."
-        ),
-        is_resolved=False,
-        created_at=datetime.utcnow(),
-        related_entity_id=stuck.id,
-    ))
-
-
 def _ensure_low_stock_alert(db, inv):
     """Create a low-stock alert only if no unresolved one exists for this product."""
     existing = db.query(OperationalAlert).filter(
@@ -439,219 +453,6 @@ def _ensure_low_stock_alert(db, inv):
     ))
 
 
-# ── Hourly agent scan ─────────────────────────────────────────────────────────
-
-async def run_hourly_loop():
-    """Hourly deterministic operational scan — separate asyncio.Task from run_loop."""
-    print("[HourlyAgent] Hourly scan loop started")
-    while True:
-        await asyncio.sleep(HOURLY_INTERVAL)
-        try:
-            _hourly_scan()
-        except Exception as exc:
-            print(f"[HourlyAgent] Scan error: {exc}")
-
-
-def _hourly_scan():
-    db = SessionLocal()
-    try:
-        now = datetime.utcnow()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        _scan_delayed_shipments(db, now)
-        _scan_message_complaints(db, today_start)
-        _scan_low_stock_hourly(db)
-        _scan_overdue_orders(db, now)
-        _scan_restock_suggestions(db, now)
-        db.commit()
-        print(f"[HourlyAgent] Scan complete at {now.strftime('%H:%M:%S')}")
-    finally:
-        db.close()
-
-
-def _scan_delayed_shipments(db, now):
-    rows = db.execute(
-        text("""
-            SELECT id FROM shipments
-            WHERE estimated_delivery < :now
-              AND status NOT IN ('delivered','failed','returned')
-        """),
-        {"now": now},
-    ).fetchall()
-    for row in rows:
-        existing = db.query(OperationalAlert).filter(
-            OperationalAlert.type == "delayed_shipment",
-            OperationalAlert.related_entity_id == row.id,
-            OperationalAlert.is_resolved == False,
-        ).first()
-        if existing:
-            continue
-        shipment = db.query(Shipment).filter(Shipment.id == row.id).first()
-        if not shipment:
-            continue
-        db.add(OperationalAlert(
-            type="delayed_shipment",
-            severity="critical",
-            title=f"Kargo {shipment.tracking_number} Gecikti",
-            description=(
-                f"{shipment.carrier} operatörü tarafından taşınan kargo "
-                f"tahmini teslimat tarihini geçti. Müşteri bilgilendirmesi gerekiyor."
-            ),
-            is_resolved=False,
-            created_at=now,
-            related_entity_id=shipment.id,
-        ))
-
-
-def _scan_message_complaints(db, today_start):
-    rows = db.execute(
-        text("""
-            SELECT category, COUNT(*) AS cnt
-            FROM customer_messages
-            WHERE direction = 'inbound'
-              AND created_at >= :today
-              AND category IS NOT NULL
-            GROUP BY category
-        """),
-        {"today": today_start},
-    ).fetchall()
-    cat_map = {r.category: r.cnt for r in rows}
-    delay_count = cat_map.get("teslimat_gecikmesi", 0)
-    if delay_count > 2:
-        existing = db.query(OperationalAlert).filter(
-            OperationalAlert.type == "complaint_cluster",
-            OperationalAlert.is_resolved == False,
-            OperationalAlert.created_at >= today_start,
-        ).first()
-        if not existing:
-            db.add(OperationalAlert(
-                type="complaint_cluster",
-                severity="warning",
-                title=f"Teslimat Gecikme Şikayeti Kümesi ({delay_count} Mesaj)",
-                description=(
-                    f"Bugün {delay_count} müşteri teslimat gecikmesi bildirdi. "
-                    "Kargo operatörleriyle iletişim ve müşteri bilgilendirmesi önerilir."
-                ),
-                is_resolved=False,
-                created_at=datetime.utcnow(),
-            ))
-
-
-def _scan_low_stock_hourly(db):
-    rows = db.execute(
-        text("""
-            SELECT i.product_id, i.quantity_kg, i.min_threshold, i.reorder_point,
-                   p.name, p.unit
-            FROM inventory i
-            JOIN products p ON p.id = i.product_id
-            WHERE i.quantity_kg < i.min_threshold
-        """)
-    ).fetchall()
-    for row in rows:
-        existing = db.query(OperationalAlert).filter(
-            OperationalAlert.type == "low_stock",
-            OperationalAlert.related_entity_id == row.product_id,
-            OperationalAlert.is_resolved == False,
-        ).first()
-        if existing:
-            continue
-        severity = "critical" if row.quantity_kg < row.min_threshold * 0.5 else "warning"
-        db.add(OperationalAlert(
-            type="low_stock",
-            severity=severity,
-            title=f"{row.name} Stok Uyarısı",
-            description=(
-                f"{row.name} stoku {row.quantity_kg:.1f} {row.unit} seviyesine düştü "
-                f"(eşik: {row.min_threshold} {row.unit}). "
-                f"Yenileme noktası: {row.reorder_point} {row.unit}."
-            ),
-            is_resolved=False,
-            created_at=datetime.utcnow(),
-            related_entity_id=row.product_id,
-        ))
-
-
-def _scan_overdue_orders(db, now):
-    cutoff = now - timedelta(days=5)
-    rows = db.execute(
-        text("""
-            SELECT o.id, c.name AS customer_name
-            FROM orders o
-            JOIN customers c ON c.id = o.customer_id
-            WHERE o.created_at <= :cutoff
-              AND o.status NOT IN ('delivered','cancelled')
-        """),
-        {"cutoff": cutoff},
-    ).fetchall()
-    for row in rows:
-        existing = db.query(OperationalAlert).filter(
-            OperationalAlert.type == "overdue_order",
-            OperationalAlert.related_entity_id == row.id,
-            OperationalAlert.is_resolved == False,
-        ).first()
-        if existing:
-            continue
-        db.add(OperationalAlert(
-            type="overdue_order",
-            severity="warning",
-            title=f"Sipariş #{row.id} 5+ Gündür Teslim Edilmedi",
-            description=(
-                f"{row.customer_name} müşterisine ait #{row.id} numaralı sipariş "
-                f"5 günden uzun süredir teslim edilmemiş. Manuel kontrol gerekiyor."
-            ),
-            is_resolved=False,
-            created_at=now,
-            related_entity_id=row.id,
-        ))
-
-
-def _scan_restock_suggestions(db, now):
-    cutoff_14d = now - timedelta(days=14)
-    rows = db.execute(
-        text("""
-            SELECT i.product_id, i.quantity_kg, i.reorder_point, p.name, p.unit
-            FROM inventory i
-            JOIN products p ON p.id = i.product_id
-            WHERE i.quantity_kg < i.reorder_point
-        """)
-    ).fetchall()
-    for row in rows:
-        existing = db.query(OperationalAlert).filter(
-            OperationalAlert.type == "restock_suggestion",
-            OperationalAlert.related_entity_id == row.product_id,
-            OperationalAlert.is_resolved == False,
-        ).first()
-        if existing:
-            continue
-        total_consumed = db.execute(
-            text("""
-                SELECT ABS(SUM(quantity_change)) AS total
-                FROM inventory_movements
-                WHERE product_id = :pid
-                  AND quantity_change < 0
-                  AND timestamp >= :cutoff
-            """),
-            {"pid": row.product_id, "cutoff": cutoff_14d},
-        ).scalar() or 0.0
-        avg_daily = float(total_consumed) / 14.0
-        deficit = max(0.0, float(row.reorder_point) - float(row.quantity_kg))
-        raw_qty = deficit + avg_daily * 7
-        suggest_qty = max(10, round(raw_qty / 10) * 10)
-        db.add(OperationalAlert(
-            type="restock_suggestion",
-            severity="info",
-            title=f"{row.name} İçin Sipariş Önerisi: {suggest_qty} {row.unit}",
-            description=(
-                f"{row.name}: mevcut stok {row.quantity_kg:.1f} {row.unit}, "
-                f"yenileme noktası {row.reorder_point} {row.unit}. "
-                f"Son 14 günlük ort. tüketim: {avg_daily:.1f} {row.unit}/gün. "
-                f"Önerilen sipariş miktarı: {suggest_qty} {row.unit}."
-            ),
-            is_resolved=False,
-            created_at=now,
-            related_entity_id=row.product_id,
-        ))
-
-
 def _resolve_alert_for_entity(db, alert_type: str, entity_id: int):
     alert = db.query(OperationalAlert).filter(
         OperationalAlert.type == alert_type,
@@ -674,11 +475,15 @@ def trigger_event(event_type: str, target_id: Optional[int] = None):
         elif event_type == "stock_drop":
             _trigger_stock_drop(db, target_id)
         elif event_type == "complaint":
-            _maybe_generate_complaint.__wrapped__(db) if hasattr(_maybe_generate_complaint, "__wrapped__") else _force_complaint(db)
+            _force_complaint(db)
         elif event_type == "anomaly":
             _trigger_anomaly(db, target_id)
         elif event_type == "delivery":
             _trigger_delivery(db, target_id)
+        elif event_type == "new_order":
+            _trigger_new_order(db)
+        elif event_type == "new_customer":
+            _trigger_new_customer(db)
         db.commit()
     finally:
         db.close()
@@ -690,13 +495,12 @@ def _trigger_delayed_shipment(db, target_id):
     else:
         shipment = (
             db.query(Shipment)
-            .filter(Shipment.status.in_(["in_transit", "at_facility"]))
+            .filter(Shipment.status.in_(["in_transit", "at_facility", "preparing", "out_for_delivery"]))
             .order_by(Shipment.updated_at)
             .first()
         )
     if not shipment:
         return
-    # Push estimated_delivery into the past so it registers as delayed
     shipment.estimated_delivery = datetime.utcnow() - timedelta(days=2)
     shipment.updated_at = datetime.utcnow()
     db.add(ShipmentUpdate(
@@ -724,7 +528,6 @@ def _trigger_stock_drop(db, target_id):
     if target_id:
         inv = db.query(Inventory).filter(Inventory.product_id == target_id).first()
     else:
-        # Pick a random product that is not already at 0
         inv = (
             db.query(Inventory)
             .filter(Inventory.quantity_kg > 10)
@@ -826,6 +629,192 @@ def _trigger_anomaly(db, target_id):
     ))
 
 
+def _trigger_new_order(db):
+    """Force-create a new order, bypassing daily pacing gates."""
+    now = datetime.utcnow()
+    products = db.query(Product).all()
+    if not products:
+        return
+
+    all_customers = db.query(Customer).all()
+    customer = random.choice(all_customers) if all_customers else None
+
+    if customer is None:
+        first = random.choice(TURKISH_FIRST_NAMES)
+        last = random.choice(TURKISH_LAST_NAMES)
+        full_name = f"{first} {last}"
+        slug = _slugify(full_name)
+        suffix = random.randint(100, 9999)
+        email = f"{slug}{suffix}@{random.choice(EMAIL_DOMAINS)}"
+        customer = Customer(
+            name=full_name,
+            email=email,
+            phone=f"05{random.randint(30, 59)}{random.randint(1000000, 9999999)}",
+            customer_type="bireysel",
+        )
+        db.add(customer)
+        db.flush()
+
+    ctype = getattr(customer, "customer_type", "bireysel") or "bireysel"
+    qty_min, qty_max = QTY_MULTIPLIERS.get(ctype, (1, 5))
+
+    n = random.randint(1, 3)
+    selected_products = random.sample(products, k=min(n, len(products)))
+    quantities = [random.randint(qty_min, qty_max) for _ in selected_products]
+
+    city = random.choice(CITIES)
+    carrier = random.choice(CARRIERS)
+    tracking = _new_tracking_number(carrier)
+
+    order = Order(
+        customer_id=customer.id,
+        status=OrderStatus.processing,
+        created_at=now,
+        updated_at=now,
+        shipping_address=f"Merkez Mah. No:{random.randint(1, 200)}, {city}",
+        tracking_number=tracking,
+    )
+    db.add(order)
+    db.flush()
+
+    for p, qty in zip(selected_products, quantities):
+        db.add(OrderItem(order_id=order.id, product_id=p.id, quantity=qty, unit_price=p.price))
+        inv = db.query(Inventory).filter(Inventory.product_id == p.id).first()
+        if inv:
+            package_size = 1.0
+            try:
+                pkg = p.package_size or "1"
+                package_size = float(pkg.split()[0])
+            except (ValueError, AttributeError, IndexError):
+                package_size = 1.0
+            consumed = round(qty * package_size, 2)
+            inv.quantity_kg = round(max(0.0, inv.quantity_kg - consumed), 2)
+            inv.last_updated = now
+            db.add(InventoryMovement(
+                product_id=p.id,
+                order_id=order.id,
+                quantity_change=-consumed,
+                movement_type="order_fulfillment",
+                timestamp=now,
+            ))
+            if inv.quantity_kg < inv.min_threshold:
+                _ensure_low_stock_alert(db, inv)
+
+    shipment = Shipment(
+        order_id=order.id,
+        tracking_number=tracking,
+        carrier=carrier,
+        status=ShipmentStatus.preparing,
+        created_at=now,
+        updated_at=now,
+        estimated_delivery=now + timedelta(days=5),
+        recipient_name=customer.name,
+        recipient_address=order.shipping_address,
+    )
+    db.add(shipment)
+    db.flush()
+
+    db.add(ShipmentUpdate(
+        shipment_id=shipment.id,
+        status="preparing",
+        location=f"{city} Kooperatif Deposu",
+        description="Ürünler paketlendi, kargo taşıyıcıya hazır.",
+        timestamp=now,
+    ))
+
+
+def _trigger_new_customer(db):
+    """Create a new customer record, then immediately place one order for them."""
+    first = random.choice(TURKISH_FIRST_NAMES)
+    last = random.choice(TURKISH_LAST_NAMES)
+    full_name = f"{first} {last}"
+    slug = _slugify(full_name)
+    suffix = random.randint(100, 9999)
+    email = f"{slug}{suffix}@{random.choice(EMAIL_DOMAINS)}"
+    if db.query(Customer).filter(Customer.email == email).first():
+        email = f"{slug}{suffix}{random.randint(10, 99)}@{random.choice(EMAIL_DOMAINS)}"
+    ctype = random.choice(list(QTY_MULTIPLIERS.keys()))
+    customer = Customer(
+        name=full_name,
+        email=email,
+        phone=f"05{random.randint(30, 59)}{random.randint(1000000, 9999999)}",
+        customer_type=ctype,
+    )
+    db.add(customer)
+    db.flush()
+
+    # Place one order for the new customer
+    products = db.query(Product).all()
+    if not products:
+        return
+
+    qty_min, qty_max = QTY_MULTIPLIERS.get(ctype, (1, 5))
+    n = random.randint(1, 2)
+    selected_products = random.sample(products, k=min(n, len(products)))
+    quantities = [random.randint(qty_min, qty_max) for _ in selected_products]
+
+    now = datetime.utcnow()
+    city = random.choice(CITIES)
+    carrier = random.choice(CARRIERS)
+    tracking = _new_tracking_number(carrier)
+
+    order = Order(
+        customer_id=customer.id,
+        status=OrderStatus.processing,
+        created_at=now,
+        updated_at=now,
+        shipping_address=f"Merkez Mah. No:{random.randint(1, 200)}, {city}",
+        tracking_number=tracking,
+    )
+    db.add(order)
+    db.flush()
+
+    for p, qty in zip(selected_products, quantities):
+        db.add(OrderItem(order_id=order.id, product_id=p.id, quantity=qty, unit_price=p.price))
+        inv = db.query(Inventory).filter(Inventory.product_id == p.id).first()
+        if inv:
+            package_size = 1.0
+            try:
+                pkg = p.package_size or "1"
+                package_size = float(pkg.split()[0])
+            except (ValueError, AttributeError, IndexError):
+                package_size = 1.0
+            consumed = round(qty * package_size, 2)
+            inv.quantity_kg = round(max(0.0, inv.quantity_kg - consumed), 2)
+            inv.last_updated = now
+            db.add(InventoryMovement(
+                product_id=p.id,
+                order_id=order.id,
+                quantity_change=-consumed,
+                movement_type="order_fulfillment",
+                timestamp=now,
+            ))
+            if inv.quantity_kg < inv.min_threshold:
+                _ensure_low_stock_alert(db, inv)
+
+    shipment = Shipment(
+        order_id=order.id,
+        tracking_number=tracking,
+        carrier=carrier,
+        status=ShipmentStatus.preparing,
+        created_at=now,
+        updated_at=now,
+        estimated_delivery=now + timedelta(days=5),
+        recipient_name=customer.name,
+        recipient_address=order.shipping_address,
+    )
+    db.add(shipment)
+    db.flush()
+
+    db.add(ShipmentUpdate(
+        shipment_id=shipment.id,
+        status="preparing",
+        location=f"{city} Kooperatif Deposu",
+        description="Ürünler paketlendi, kargo taşıyıcıya hazır.",
+        timestamp=now,
+    ))
+
+
 def _trigger_delivery(db, target_id):
     if target_id:
         shipment = db.query(Shipment).filter(Shipment.id == target_id).first()
@@ -837,7 +826,6 @@ def _trigger_delivery(db, target_id):
             .first()
         )
     if not shipment:
-        # Fall back to at_facility
         shipment = (
             db.query(Shipment)
             .filter(Shipment.status == ShipmentStatus.at_facility)

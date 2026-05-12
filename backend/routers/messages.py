@@ -19,9 +19,7 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 
 CATEGORIES = [
     {"value": "teslimat_gecikmesi", "label": "Teslimat gecikmesi", "urgency": "yüksek"},
-    {"value": "urun_hasari",        "label": "Ürün hasarı",        "urgency": "yüksek"},
     {"value": "yanlis_urun",        "label": "Yanlış ürün",        "urgency": "orta"},
-    {"value": "paket_hasari",       "label": "Paket hasarı",       "urgency": "orta"},
     {"value": "siparis_talebi",     "label": "Sipariş talebi",     "urgency": "orta"},
     {"value": "fatura_duzeltme",    "label": "Fatura",             "urgency": "düşük"},
     {"value": "stok_bilgisi",       "label": "Stok sorusu",        "urgency": "düşük"},
@@ -55,13 +53,18 @@ class CreateMessageResponse(BaseModel):
 # ── AI action suggestion via Groq ─────────────────────────────────────────────
 
 def _groq_action_suggestion(category: str, subject: str, body: str, customer_name: str) -> str:
-    """Call Groq to get a short actionable suggestion for this message."""
+    """Call Gemini to get a short actionable suggestion for this message."""
     try:
-        from groq import Groq
-        api_key = os.getenv("GROQ_API_KEY")
+        import google.generativeai as genai
+        api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return _fallback_action(category)
-        client = Groq(api_key=api_key)
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            "gemini-2.5-flash",
+            system_instruction="Sen bir kooperatif operasyon asistanısın. Kısa, net Türkçe aksiyon önerisi ver.",
+            generation_config=genai.types.GenerationConfig(temperature=0.3, max_output_tokens=120),
+        )
         prompt = (
             f"Müşteri: {customer_name}\n"
             f"Konu kategorisi: {category}\n"
@@ -70,16 +73,8 @@ def _groq_action_suggestion(category: str, subject: str, body: str, customer_nam
             "Bu mesaj için operasyon yöneticisinin alması gereken tek ve en önemli aksiyonu "
             "1-2 cümleyle belirt. Türkçe yaz, eyleme geçilebilir ve net ol."
         )
-        resp = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "Sen bir kooperatif operasyon asistanısın. Kısa, net Türkçe aksiyon önerisi ver."},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=120,
-            temperature=0.3,
-        )
-        return resp.choices[0].message.content.strip()
+        resp = model.generate_content(prompt)
+        return resp.text.strip()
     except Exception:
         return _fallback_action(category)
 
@@ -87,9 +82,7 @@ def _groq_action_suggestion(category: str, subject: str, body: str, customer_nam
 def _fallback_action(category: str) -> str:
     return {
         "teslimat_gecikmesi": "Kargo firmasıyla iletişime geçerek güncel teslim tarihini alın ve müşteriyi bilgilendirin.",
-        "urun_hasari":        "Müşteriden hasar fotoğrafı isteyin, iade/değişim sürecini başlatın.",
         "yanlis_urun":        "Siparişi doğrulayın, doğru ürünü en kısa sürede gönderin.",
-        "paket_hasari":       "Hasar tutanağı oluşturun ve kargo firmasına bildirim yapın.",
         "siparis_talebi":     "Stok durumunu kontrol edin ve müşteriye sipariş onayı gönderin.",
         "fatura_duzeltme":    "Fatura kaydını muhasebe birimiyle kontrol edin ve düzeltme yapın.",
         "stok_bilgisi":       "Envanter sisteminden güncel stok bilgisini alın ve müşteriyle paylaşın.",

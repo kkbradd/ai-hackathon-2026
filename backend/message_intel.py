@@ -6,15 +6,15 @@ SUBJECT_HINTS = (
     # Teslimat
     ("teslimat gecikmesi", "teslimat_gecikmesi", "yüksek"),
     ("teslimat gecik",     "teslimat_gecikmesi", "yüksek"),
-    # Ürün/hasar
-    ("ürün kalitesi",      "urun_hasari",        "yüksek"),
-    ("ürün kalitesi sorunu","urun_hasari",        "yüksek"),
+    # Ürün/yanlış teslimat
+    ("ürün kalitesi",      "yanlis_urun",        "orta"),
+    ("ürün kalitesi sorunu","yanlis_urun",        "orta"),
     ("yanlış ürün",        "yanlis_urun",        "orta"),
     ("yanlış ürün teslimatı","yanlis_urun",       "orta"),
-    # Paket hasarı
-    ("hasar görmüş paket", "paket_hasari",       "orta"),
-    ("hasar görmüş",       "paket_hasari",       "orta"),
-    ("paket hasarı",       "paket_hasari",       "orta"),
+    # Paket hasarı → genel destek
+    ("hasar görmüş paket", "genel_destek",       "orta"),
+    ("hasar görmüş",       "genel_destek",       "orta"),
+    ("paket hasarı",       "genel_destek",       "orta"),
     # Sipariş
     ("acil stok talebi",   "siparis_talebi",     "yüksek"),
     ("acil sipariş bildirimi","siparis_talebi",   "yüksek"),
@@ -40,7 +40,7 @@ def classify_customer_message(subject: Optional[str]) -> Tuple[str, str]:
     if "gecik" in s or "gelmedi" in s:
         return "teslimat_gecikmesi", "yüksek"
     if "iade" in s or "bozuk" in s:
-        return "urun_hasari", "yüksek"
+        return "yanlis_urun", "orta"
     return "genel_destek", "orta"
 
 
@@ -48,9 +48,7 @@ def brief_summary(customer_name: str, category: str, subject: Optional[str]) -> 
     sub = subject or "Konu bildirildi"
     cat_label = {
         "teslimat_gecikmesi": "Teslimat gecikmesi",
-        "urun_hasari": "Ürün / paket sorunu",
         "yanlis_urun": "Yanlış ürün",
-        "paket_hasari": "Paket hasarı",
         "siparis_talebi": "Sipariş veya kapasite talebi",
         "fatura_duzeltme": "Operasyon/finans bildirimi",
         "stok_bilgisi": "Envanter sorusu",

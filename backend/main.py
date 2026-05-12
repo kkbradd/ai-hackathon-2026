@@ -8,36 +8,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import engine, Base
-# Import all models so Base.metadata registers them before create_all
 from models import (  # noqa: F401
     User, Customer, Product, Order, OrderItem,
     Shipment, ShipmentUpdate, CustomerMessage,
     Inventory, InventoryMovement, OperationalAlert,
+    AIInsight,
 )
-import simulation
+from agents.orchestrator import AgentOrchestrator
 from routers import auth, chat, orders, shipments, dashboard
 from routers import inventory, operational_alerts, analytics, simulate, messages, customers
+from routers import insights
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    sim_task = asyncio.create_task(simulation.run_loop())
-    hourly_task = asyncio.create_task(simulation.run_hourly_loop())
+    orchestrator = AgentOrchestrator()
+    await orchestrator.start()
     yield
-    sim_task.cancel()
-    hourly_task.cancel()
-    for t in (sim_task, hourly_task):
-        try:
-            await t
-        except asyncio.CancelledError:
-            pass
+    await orchestrator.stop()
 
 
 app = FastAPI(
     title="Kooperatif Operasyon Merkezi API",
-    description="AI-powered operational control center for food and agriculture cooperatives",
-    version="3.0.0",
+    description="AI-powered operational intelligence platform for food and agriculture cooperatives",
+    version="4.0.0",
     lifespan=lifespan,
 )
 
@@ -60,13 +55,14 @@ app.include_router(analytics.router)
 app.include_router(simulate.router)
 app.include_router(messages.router)
 app.include_router(customers.router)
+app.include_router(insights.router)
 
 
 @app.get("/")
 def root():
     return {
         "name": "Kooperatif Operasyon Merkezi",
-        "version": "3.0.0",
+        "version": "4.0.0",
         "status": "running",
         "docs": "/docs",
     }

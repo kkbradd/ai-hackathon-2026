@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, AlertTriangle, Package, MessageSquare, CheckCircle, RefreshCw } from "lucide-react";
+import { Zap, AlertTriangle, Package, MessageSquare, CheckCircle, RefreshCw, ShoppingCart, UserPlus } from "lucide-react";
 import { useDashboard } from "../../hooks/useDashboard";
 import { triggerSimulationEvent } from "../../api/client";
 import KpiGrid from "./KpiGrid";
@@ -10,6 +10,8 @@ import AIInsightsSection from "./AIInsightsSection";
 import ActivityFeed from "./ActivityFeed";
 
 const SIMULATE_EVENTS = [
+  { type: "new_order",        label: "Sipariş Ekle",    Icon: ShoppingCart,  color: "text-blue-600 bg-blue-50" },
+  { type: "new_customer",     label: "Müşteri Ekle",    Icon: UserPlus,      color: "text-teal-600 bg-teal-50" },
   { type: "delayed_shipment", label: "Kargo Geciktir",  Icon: AlertTriangle, color: "text-red-600 bg-red-50" },
   { type: "stock_drop",       label: "Stok Düşür",      Icon: Package,       color: "text-orange-600 bg-orange-50" },
   { type: "complaint",        label: "Şikayet Oluştur", Icon: MessageSquare, color: "text-violet-600 bg-violet-50" },
@@ -20,16 +22,31 @@ const SIMULATE_EVENTS = [
 function SimulateButton({ onEvent }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const handle = async (type) => {
     setLoading(true);
     setOpen(false);
-    try { await triggerSimulationEvent(type); onEvent?.(); } catch {}
-    finally { setLoading(false); }
+    try {
+      const res = await triggerSimulationEvent(type);
+      setToast({ ok: true, msg: res?.detail ?? "Olay tetiklendi." });
+      onEvent?.();
+    } catch (err) {
+      const msg = err?.response?.data?.detail ?? "Olay tetiklenemedi.";
+      setToast({ ok: false, msg });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   return (
     <div className="relative">
+      {toast && (
+        <div className={`absolute -top-10 right-0 text-[11px] font-semibold px-3 py-1.5 rounded-lg shadow-md whitespace-nowrap z-50 ${toast.ok ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
+          {toast.msg}
+        </div>
+      )}
       <button
         onClick={() => setOpen((o) => !o)}
         disabled={loading}
@@ -112,7 +129,7 @@ export default function DashboardPanel() {
 
         {/* Zone 4 — AI Insights + Alerts */}
         <div className="pt-10 border-t border-slate-100/80 mt-12">
-          <AIInsightsSection data={data} loading={loading} />
+          <AIInsightsSection loading={loading} />
         </div>
 
         {/* Zone 5 — Activity Feed (başlık kartlara yakın) */}

@@ -7,7 +7,7 @@ from auth import verify_token
 from database import get_db
 from operational_metrics import counts_orders_by_status, pending_pipeline_count
 from models import Order, OrderItem, User
-from schemas import OrderListResponse, OrderDetail, OrderSummary, OrderItemOut
+from schemas import OrderListResponse, OrderDetail, OrderSummary, OrderItemOut, OrderSummaryItem
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -44,6 +44,16 @@ def list_orders(
     for order in orders:
         item_count = sum(i.quantity for i in order.items)
         total = round(sum(i.quantity * i.unit_price for i in order.items), 2)
+        items = [
+            OrderSummaryItem(
+                product=i.product.name,
+                quantity=i.quantity,
+                unit=i.product.unit,
+                unit_price=i.unit_price,
+                subtotal=round(i.quantity * i.unit_price, 2),
+            )
+            for i in order.items
+        ]
         result.append(
             OrderSummary(
                 order_id=order.id,
@@ -53,6 +63,7 @@ def list_orders(
                 item_count=item_count,
                 total=total,
                 created_at=order.created_at.strftime("%d.%m.%Y %H:%M"),
+                items=items,
             )
         )
 

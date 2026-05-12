@@ -149,4 +149,21 @@ export async function fetchCustomers() {
   return res.data;
 }
 
+// ── AI Insights ───────────────────────────────────────────────────────────────
+export async function fetchInsights(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const res = await api.get(`/insights${query ? "?" + query : ""}`);
+  return res.data;
+}
+
+export async function dismissInsight(insightId) {
+  const res = await api.post(`/insights/${insightId}/dismiss`);
+  return res.data;
+}
+
+export async function fetchAgentStatus() {
+  const res = await api.get("/insights/agent-status");
+  return res.data;
+}
+
 export default api;

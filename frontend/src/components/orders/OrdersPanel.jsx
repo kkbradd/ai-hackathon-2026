@@ -1,9 +1,20 @@
-import { motion } from "framer-motion";
-import { Search, ClipboardList } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, ClipboardList, ChevronDown } from "lucide-react";
 import { format, parse } from "date-fns";
 import { tr } from "date-fns/locale";
 import { useState } from "react";
 import { useOrders } from "../../hooks/useOrders";
+
+const CUSTOMER_TYPE_CONFIG = {
+  restoran:      { label: "Restoran",       color: "bg-orange-100 text-orange-700" },
+  market:        { label: "Market",         color: "bg-blue-100 text-blue-700" },
+  bakkal:        { label: "Bakkal",         color: "bg-green-100 text-green-700" },
+  kafe:          { label: "Kafe",           color: "bg-purple-100 text-purple-700" },
+  butik:         { label: "Butik",          color: "bg-pink-100 text-pink-700" },
+  bireysel:      { label: "Bireysel",       color: "bg-slate-100 text-slate-600" },
+  yerel_isletme: { label: "Yerel İşletme",  color: "bg-amber-100 text-amber-700" },
+  kurumsal:      { label: "Kurumsal",       color: "bg-indigo-100 text-indigo-700" },
+};
 
 const DATE_FILTERS = [
   { value: "today", label: "Bugün" },
@@ -49,8 +60,14 @@ function SkeletonRow() {
 export default function OrdersPanel() {
   const { orders, meta, loading, error, dateFilter, setDateFilter, search, setSearch } = useOrders();
   const [customerType, setCustomerType] = useState("kurumsal");
+  const [expandedId, setExpandedId] = useState(null);
 
-  const filteredOrders = orders.filter((o) => o.customer_type === customerType);
+  const KURUMSAL_TYPES = new Set(["kurumsal", "restoran", "market", "bakkal", "kafe", "butik", "yerel_isletme"]);
+  const filteredOrders = orders.filter((o) =>
+    customerType === "kurumsal"
+      ? KURUMSAL_TYPES.has(o.customer_type)
+      : o.customer_type === "bireysel"
+  );
 
   return (
     <div className="flex flex-col h-full bg-transparent">
@@ -161,38 +178,88 @@ export default function OrdersPanel() {
 
         {!loading && !error && (
           <>
-            {filteredOrders.map((order) => (
-              <motion.div
-                key={order.order_id}
-                whileHover={{ x: 2 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                className="flex items-center gap-4 px-6 py-4 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[12px] font-extrabold shrink-0">
-                    {getInitials(order.customer)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[14px] font-bold text-slate-800 truncate">{order.customer}</p>
-                    <p className="text-[11px] font-medium text-slate-500 mt-0.5 font-mono">#{order.order_id}</p>
-                  </div>
-                </div>
+            {filteredOrders.map((order) => {
+              const isExpanded = expandedId === order.order_id;
+              const typeConfig = CUSTOMER_TYPE_CONFIG[order.customer_type] || CUSTOMER_TYPE_CONFIG.kurumsal;
+              return (
+                <div key={order.order_id} className="border-b border-slate-100">
+                  <motion.div
+                    whileHover={{ x: 2 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    onClick={() => setExpandedId(isExpanded ? null : order.order_id)}
+                    className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[12px] font-extrabold shrink-0">
+                        {getInitials(order.customer)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-[14px] font-bold text-slate-800 truncate">{order.customer}</p>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${typeConfig.color}`}>
+                            {typeConfig.label}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-slate-500 mt-0.5 font-mono">#{order.order_id}</p>
+                      </div>
+                    </div>
 
-                <div className="w-20 text-right shrink-0">
-                  <span className="text-[13px] font-semibold text-slate-600 tabular-nums">{order.item_count} kalem</span>
-                </div>
+                    <div className="w-20 text-right shrink-0">
+                      <span className="text-[13px] font-semibold text-slate-600 tabular-nums">{order.item_count} kalem</span>
+                    </div>
 
-                <div className="w-28 text-right shrink-0">
-                  <span className="text-[15px] font-extrabold text-slate-900 tabular-nums">
-                    ₺{order.total?.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
+                    <div className="w-28 text-right shrink-0">
+                      <span className="text-[15px] font-extrabold text-slate-900 tabular-nums">
+                        ₺{order.total?.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
 
-                <div className="w-28 text-right shrink-0 hidden sm:block">
-                  <span className="text-[12px] font-medium text-slate-500">{formatDate(order.created_at)}</span>
+                    <div className="w-28 text-right shrink-0 hidden sm:block">
+                      <span className="text-[12px] font-medium text-slate-500">{formatDate(order.created_at)}</span>
+                    </div>
+
+                    <ChevronDown
+                      className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                    />
+                  </motion.div>
+
+                  <AnimatePresence>
+                    {isExpanded && order.items && order.items.length > 0 && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-6 py-3 bg-slate-50 border-t border-slate-100">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Sipariş Detayı</p>
+                          <div className="space-y-1.5">
+                            {order.items.map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-[12px]">
+                                <span className="text-slate-700 font-medium">
+                                  {item.product}
+                                  <span className="text-slate-400 ml-1">× {item.quantity} {item.unit}</span>
+                                </span>
+                                <span className="font-bold text-slate-800 tabular-nums">
+                                  ₺{item.subtotal?.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-slate-200 flex justify-between text-[12px]">
+                            <span className="text-slate-500 font-semibold">Toplam</span>
+                            <span className="font-extrabold text-slate-900 tabular-nums">
+                              ₺{order.total?.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-              </motion.div>
-            ))}
+              );
+            })}
 
             {filteredOrders.length === 0 && (
               <div className="flex flex-col items-center justify-center py-24">

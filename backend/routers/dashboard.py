@@ -42,6 +42,7 @@ from schemas import (
     OperationalAlertOut,
     WeeklyChartData,
     InboundMessageDigest,
+    AIInsightOut,
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -49,179 +50,30 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 SEVERITY_RANK = {"critical": 0, "warning": 1, "info": 2}
 
 
-def _generate_ai_insights(db: Session) -> List[str]:
-    """Rule-based operational intelligence — no LLM call, fast."""
-    insights: List[str] = []
-    now = datetime.utcnow()
-
-    total_active = db.execute(
-        text("SELECT COUNT(*) FROM shipments WHERE status NOT IN ('delivered','failed','returned')")
-    ).scalar() or 0
-    delayed = delayed_shipments_count(db, now)
-    if total_active > 0 and delayed / total_active > 0.12:
-        pct = round(delayed / total_active * 100)
-        insights.append(
-            f"Aktif kargoların yaklaşık %{pct}'i teslim tarihini aştı; "
-            f"{delayed} sevkiyat zamanında güncellenmeli."
+def _fetch_ai_insights(db: Session) -> List[AIInsightOut]:
+    """Fetch pre-generated AI insights from the ai_insights table."""
+    from models import AIInsight
+    rows = (
+        db.query(AIInsight)
+        .filter(AIInsight.is_dismissed == False)
+        .order_by(AIInsight.created_at.desc())
+        .limit(8)
+        .all()
+    )
+    return [
+        AIInsightOut(
+            id=r.id,
+            agent_name=r.agent_name,
+            insight_type=r.insight_type,
+            content=r.content,
+            severity=r.severity,
+            related_entity_type=r.related_entity_type,
+            related_entity_id=r.related_entity_id,
+            created_at=r.created_at.strftime("%d.%m.%Y %H:%M"),
+            is_dismissed=r.is_dismissed,
         )
-
-    low_stock_rows = db.execute(
-        text("""
-            SELECT p.name
-            FROM inventory i
-            JOIN products p ON p.id = i.product_id
-            WHERE i.quantity_kg < i.min_threshold
-            ORDER BY (i.quantity_kg / i.min_threshold) ASC
-        """)
-    ).fetchall()
-    if low_stock_rows:
-        names = ", ".join(r.name for r in low_stock_rows[:3])
-        extra = f" ve {len(low_stock_rows) - 3} ürün daha" if len(low_stock_rows) > 3 else ""
-        insights.append(
-            f"Stok uyarısı: {names}{extra} minimum eşiğin altında. "
-            "Tedarik veya yeniden sipariş önceliği önerilir."
-        )
-
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    yesterday_start = today_start - timedelta(days=1)
-    orders_today = orders_count_in_range(db, today_start, now)
-    orders_yesterday = orders_count_in_range(db, yesterday_start, today_start)
-    if orders_yesterday > 0 and abs((orders_today - orders_yesterday) / orders_yesterday) >= 0.10:
-        delta_pct = round((orders_today - orders_yesterday) / orders_yesterday * 100)
-        if delta_pct > 0:
-            insights.append(
-                f"Bugün alınan sipariş sayısı düne göre %{delta_pct} arttı "
-                f"({orders_today} işlem)."
-            )
-        else:
-            insights.append(
-                f"Bugün alınan sipariş sayısı düne göre %{abs(delta_pct)} azaldı "
-                f"({orders_today} işlem)."
-            )
-    elif orders_yesterday == 0 and orders_today >= 3:
-        insights.append(
-            "Dün iptal işlem yapılmış veya düşük hacim vardı; "
-            f"bugün {orders_today} sipariş alınarak aktivite yükseldi."
-        )
-
-    carrier_delay = db.execute(
-        text("""
-            SELECT carrier, COUNT(*) AS cnt
-            FROM shipments
-            WHERE estimated_delivery IS NOT NULL
-              AND estimated_delivery < :now
-              AND status NOT IN ('delivered','failed','returned')
-            GROUP BY carrier
-            ORDER BY cnt DESC
-            LIMIT 1
-        """),
-        {"now": now},
-    ).fetchone()
-    if carrier_delay and carrier_delay.cnt >= 2:
-        insights.append(
-            f"{carrier_delay.carrier} hattında {carrier_delay.cnt} gecikmiş sevkiyat var. "
-            "Müşteri iletişiminde taşıyıcı durumu öne çıkarılabilir."
-        )
-
-    cutoff_7d = now - timedelta(days=7)
-    top = db.execute(
-        text("""
-            SELECT p.name, SUM(oi.quantity) AS total_qty
-            FROM products p
-            JOIN order_items oi ON oi.product_id = p.id
-            JOIN orders      o  ON o.id = oi.order_id
-            WHERE o.created_at >= :cutoff
-            GROUP BY p.name
-            ORDER BY total_qty DESC
-            LIMIT 1
-        """),
-        {"cutoff": cutoff_7d},
-    ).fetchone()
-    if top:
-        insights.append(
-            f"Son 7 günde öne çıkan ürün {top.name} "
-            f"({int(top.total_qty)} birim sipariş). Stok görünümü yakından izlenmeli."
-        )
-
-    week_start_roll = now - timedelta(days=7)
-    orders_weekly = orders_count_in_range(db, week_start_roll, now)
-    revenue_7d_scalar = db.execute(
-        text("""
-            SELECT SUM(oi.unit_price * oi.quantity)
-            FROM order_items oi
-            JOIN orders o ON o.id = oi.order_id
-            WHERE o.created_at >= :cutoff
-        """),
-        {"cutoff": cutoff_7d},
-    ).scalar()
-    revenue_7d = round(float(revenue_7d_scalar or 0.0), 2)
-    if orders_weekly > 0:
-        insights.insert(
-            0,
-            f"Son 7 günde {orders_weekly} sipariş ve ₺{revenue_7d:,.0f} civarında ciro oluştu.",
-        )
-
-    complaint_count = db.execute(
-        text("""
-            SELECT COUNT(*) FROM operational_alerts
-            WHERE type = 'complaint' AND is_resolved = 0
-        """)
-    ).scalar() or 0
-    if complaint_count >= 2:
-        insights.append(
-            f"{complaint_count} açık müşteri şikayeti çözüm bekliyor; "
-            "memnuniyet ve tekrar sipariş riski artabilir."
-        )
-
-    urgent_inbox = db.execute(
-        text("""
-            SELECT COUNT(*) FROM customer_messages
-            WHERE direction = 'inbound' AND is_read = 0 AND urgency = 'yüksek'
-        """)
-    ).scalar() or 0
-    if urgent_inbox >= 2:
-        insights.append(
-            f"Gelen kutuda {urgent_inbox} yüksek öncelikli müşteri bildirimi okunmayı bekliyor; "
-            "operasyon ve lojistik ekipleriyle hızlı senkron önerilir."
-        )
-
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    cat_rows = db.execute(
-        text("""
-            SELECT category, COUNT(*) AS cnt
-            FROM customer_messages
-            WHERE direction = 'inbound'
-              AND created_at >= :today
-              AND category IS NOT NULL
-            GROUP BY category
-            ORDER BY cnt DESC
-        """),
-        {"today": today_start},
-    ).fetchall()
-    cat_map = {r.category: r.cnt for r in cat_rows}
-    delay_today = cat_map.get("teslimat_gecikmesi", 0)
-    if delay_today > 2:
-        insights.append(
-            f"Bugün {delay_today} müşteri teslimat gecikmesi kategorisinde mesaj gönderdi; "
-            "kargo operasyonunda sistematik bir sorun olabilir."
-        )
-
-    two_hours_ago = now - timedelta(hours=2)
-    recent_urgent = db.execute(
-        text("""
-            SELECT COUNT(*) FROM customer_messages
-            WHERE direction = 'inbound' AND is_read = 0
-              AND urgency = 'yüksek' AND created_at >= :cutoff
-        """),
-        {"cutoff": two_hours_ago},
-    ).scalar() or 0
-    if recent_urgent >= 1:
-        insights.append(
-            f"Son 2 saatte {recent_urgent} yüksek öncelikli okunmamış müşteri mesajı geldi; "
-            "acil müdahale önerilir."
-        )
-
-    return insights[:5]
+        for r in rows
+    ]
 
 
 @router.get("", response_model=DashboardResponse)
@@ -294,7 +146,7 @@ def get_dashboard(
         ))
     alerts.sort(key=lambda a: SEVERITY_RANK.get(a.severity, 9))
 
-    ai_insights = _generate_ai_insights(db)
+    ai_insights = _fetch_ai_insights(db)
 
     top_rows = db.execute(
         text("""
@@ -373,23 +225,35 @@ def get_dashboard(
             revenue=round(float(row.revenue or 0.0), 2) if row else 0.0,
         ))
 
+    # Dashboard'da sadece operasyonel kategoriler gösterilir (genel_destek hariç)
+    OPERATIONAL_CATEGORIES = (
+        "teslimat_gecikmesi", "yanlis_urun",
+    )
+    cat_placeholder = ",".join(f"'{c}'" for c in OPERATIONAL_CATEGORIES)
+
     inbound_messages_today_count = db.execute(
-        text("""
+        text(f"""
             SELECT COUNT(*) FROM customer_messages
-            WHERE direction = 'inbound' AND created_at >= :today
+            WHERE direction = 'inbound'
+              AND created_at >= :today
+              AND category IN ({cat_placeholder})
         """),
         {"today": today_start},
     ).scalar() or 0
 
     msg_today_slice = db.execute(
-        text("""
+        text(f"""
             SELECT cm.id, cm.subject, c.name AS customer_name,
                    cm.related_order_id, cm.category,
                    cm.created_at
             FROM customer_messages cm
             JOIN customers c ON c.id = cm.customer_id
-            WHERE cm.direction = 'inbound' AND cm.created_at >= :today
-            ORDER BY cm.created_at DESC
+            WHERE cm.direction = 'inbound'
+              AND cm.created_at >= :today
+              AND cm.category IN ({cat_placeholder})
+            ORDER BY
+              CASE cm.urgency WHEN 'yüksek' THEN 0 WHEN 'orta' THEN 1 ELSE 2 END,
+              cm.created_at DESC
             LIMIT 10
         """),
         {"today": today_start},

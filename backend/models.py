@@ -181,3 +181,17 @@ class OperationalAlert(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     resolved_at = Column(DateTime, nullable=True)
     related_entity_id = Column(Integer, nullable=True)
+
+
+class AIInsight(Base):
+    __tablename__ = "ai_insights"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_name = Column(String, nullable=False)
+    insight_type = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    severity = Column(String, nullable=False)
+    related_entity_type = Column(String, nullable=True)
+    related_entity_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_dismissed = Column(Boolean, default=False)

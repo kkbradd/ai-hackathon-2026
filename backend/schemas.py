@@ -48,6 +48,15 @@ class OrderItemOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OrderSummaryItem(BaseModel):
+    product: str
+    quantity: float
+    unit: str
+    unit_price: float
+    subtotal: float
+    model_config = {"from_attributes": True}
+
+
 class OrderSummary(BaseModel):
     order_id: int
     customer: str
@@ -56,6 +65,7 @@ class OrderSummary(BaseModel):
     item_count: int
     total: float
     created_at: str
+    items: List[OrderSummaryItem] = []
     model_config = {"from_attributes": True}
 
 
@@ -263,6 +273,24 @@ class InboundMessageDigest(BaseModel):
     created_at: str
 
 
+class AIInsightOut(BaseModel):
+    id: int
+    agent_name: str
+    insight_type: str
+    content: str
+    severity: str
+    related_entity_type: Optional[str] = None
+    related_entity_id: Optional[int] = None
+    created_at: str
+    is_dismissed: bool
+    model_config = {"from_attributes": True}
+
+
+class InsightListResponse(BaseModel):
+    count: int
+    items: List[AIInsightOut]
+
+
 class DashboardResponse(BaseModel):
     pending_orders: int
     active_shipments: int
@@ -281,7 +309,7 @@ class DashboardResponse(BaseModel):
     weekly_chart_data: List[WeeklyChartData]
     shipment_distribution: ShipmentDistribution
     alerts: List[DashboardAlertSummary]
-    ai_insights: List[str]
+    ai_insights: List[AIInsightOut]
     top_products: List[TopProduct]
     recent_alerts: List[OperationalAlertOut]
     inbound_messages_today_count: int

@@ -21,7 +21,7 @@ export function useDashboard(weeksAgo = 0) {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 60 * 60 * 1000); // saatte bir yenile
+    const interval = setInterval(load, 30_000); // 30s — simülasyon verisini canlı yansıt
     return () => clearInterval(interval);
   }, [load]);
 
