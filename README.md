@@ -1,68 +1,95 @@
-# İşletme Asistanı — AI-Powered SME Operations Assistant
+# Kooperatif Hub — AI-Powered Operations Assistant
 
-An AI-powered operational assistant for small and medium-sized enterprises (SMEs), built for the AI Hackathon. The system uses Google Gemini 2.0 Flash with function calling to understand natural language queries and take real actions against live business data.
+Tarım ve gıda kooperatifleri için geliştirilmiş yapay zeka destekli operasyon yönetim platformu. Groq LLM (Llama 3.3 70B) ile doğal dil sorgulama, gerçek zamanlı sipariş/kargo/stok takibi ve otomatik operasyonel tarama.
 
 ---
 
-## Architecture
+## Mimari
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     FRONTEND (React + Vite + Tailwind)  │
-│  Chat UI  │  Orders Table  │  Inventory Grid            │
-└─────────────────────┬───────────────────────────────────┘
-                      │  REST API
-┌─────────────────────▼───────────────────────────────────┐
-│                  BACKEND (FastAPI + Python)              │
-│                                                          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  AI Agent Layer — Gemini 2.0 Flash               │   │
-│  │  6 tools: order status, stock check, alerts...   │   │
-│  └──────────────────────────────────────────────────┘   │
-│                                                          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Data Layer — SQLAlchemy + SQLite                │   │
-│  │  customers · products · orders · order_items     │   │
-│  └──────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│              FRONTEND  (React 19 + Vite + Tailwind CSS v4)  │
+│  Dashboard · Siparişler · Kargolar · Envanter · Mesajlar    │
+│  AI Chat Panel (streaming tool call görselleştirmesi)       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │  REST API (JWT)
+┌──────────────────────────▼──────────────────────────────────┐
+│                  BACKEND  (FastAPI + Python)                 │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  AI Agent — Groq Llama 3.3 70B (tool calling)       │   │
+│  │  17 araç: sipariş, kargo, stok, uyarı, SQL...       │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Simulation Engine  (asyncio background tasks)      │   │
+│  │  45s tick: sipariş üretimi + kargo durum geçişleri  │   │
+│  │  3600s scan: gecikme · şikayet · stok · yenileme    │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Data Layer — SQLAlchemy + SQLite                   │   │
+│  │  orders · shipments · inventory · messages · alerts │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Features
+---
 
-- **AI Chat Agent** — Natural language queries in Turkish or English, powered by Gemini 2.0 Flash with tool calling
-- **Order Tracking** — Real-time order status dashboard with status filtering and color-coded badges
-- **Inventory Management** — Product stock visualization with red/green stock bars and low-stock alerts
-- **Alert Banner** — Auto-refreshing critical stock alert strip with live polling
+## Özellikler
 
-## AI Tools
+- **AI Chat Agent** — Türkçe doğal dil sorguları, Groq Llama 3.3 70B ile araç çağrısı (tool calling)
+- **Canlı Dashboard** — Bugünkü siparişler, aktif teslimatlar, stok uyarıları, zamanında teslimat oranı
+- **Otomatik Sipariş Üretimi** — Her 45 saniyede %20 olasılıkla yeni sipariş simülasyonu (gerçek + yeni müşteri)
+- **Saatlik Operasyonel Tarama** — Gecikmiş kargolar, müşteri şikayet kümeleri, düşük stok, vadesi geçmiş siparişler, yenileme önerileri
+- **Müşteri Mesajları** — Kural tabanlı kategori/öncelik sınıflandırması, yeni mesaj oluşturma
+- **Kargo Takibi** — Durum geçişleri (preparing → in_transit → at_facility → out_for_delivery → delivered), timeline görünümü
+- **Envanter Yönetimi** — Stok seviyeleri, kritik ürün uyarıları, hareket geçmişi
 
-| Tool | Description |
+---
+
+## AI Agent Araçları
+
+| Araç | Açıklama |
 |---|---|
-| `get_order_status` | Full order detail by ID |
-| `list_pending_orders` | All pending/processing orders |
-| `check_stock` | Stock level for a product by name |
-| `search_product` | Search products by name or category |
-| `get_low_stock_alerts` | All products below reorder threshold |
-| `get_order_history` | Customer order history by email |
+| `get_order_status` | Sipariş detayı (müşteri, ürünler, kargo) |
+| `list_pending_orders` | Bekleyen/işlemdeki siparişler |
+| `get_order_history` | Müşteri sipariş geçmişi (e-posta ile) |
+| `get_shipment_status` | Kargo durumu ve gecikme bilgisi |
+| `get_shipment_timeline` | Kargo hareket zaman çizelgesi |
+| `get_delayed_shipments` | Tüm gecikmiş kargolar |
+| `get_inventory_status` | Stok seviyeleri, kritik ürünler |
+| `get_recent_messages` | Son müşteri mesajları |
+| `get_operational_alerts` | Operasyonel uyarılar (önem/çözüm filtreli) |
+| `get_demand_trends` | Ürün talep trendleri (N günlük) |
+| `get_daily_summary_rich` | Kapsamlı günlük operasyon raporu |
+| `summarize_daily_operations` | Hızlı günlük özet |
+| `update_shipment_status` | Kargo durumu güncelle + hareket kaydı ekle |
+| `update_order_status` | Sipariş durumu güncelle |
+| `resolve_operational_alert` | Uyarıyı çözüldü olarak işaretle |
+| `draft_supplier_order` | Tedarikçi sipariş taslağı oluştur |
+| `execute_sql` | Doğrudan SELECT sorgusu çalıştır (güvenli, sadece okuma) |
 
-## Setup
+---
+
+## Kurulum
 
 ### 1. Backend
 
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install fastapi uvicorn sqlalchemy google-genai faker python-dotenv
+source venv/bin/activate       # Windows: venv\Scripts\activate
+pip install -r requirements.txt
 
-# Configure API key
+# API anahtarını ayarla
 cp .env.example .env
-# Edit .env and set GEMINI_API_KEY=your_key_here
+# .env dosyasına GROQ_API_KEY değerini ekle
 
-# Seed the database
+# Veritabanını oluştur ve seed et
 python seed.py
 
-# Start the server
+# Sunucuyu başlat
 uvicorn main:app --reload
 # → http://localhost:8000
 # → http://localhost:8000/docs  (Swagger UI)
@@ -77,40 +104,58 @@ npm run dev
 # → http://localhost:5173
 ```
 
-## Mock Data
+**Demo giriş:** `admin@coop.com` / `admin123`
 
-The seed script generates:
-- **50 customers** with realistic Turkish names, emails, phone numbers
-- **30 products** across 3 categories: Gıda (food), El Sanatları (handcrafts), Tekstil (textile)
-- **200 orders** spanning the last 30 days with realistic status distribution
-- **~8 products** intentionally below reorder threshold for demo purposes
+---
 
-## Demo Script (3 minutes)
+## Seed Verisi
 
-1. Open `http://localhost:5173` → Alert banner shows critical stock items
-2. **Chat tab** → Type: `"Bekleyen siparişleri göster"` → Agent calls `list_pending_orders`
-3. **Chat tab** → Type: `"42 numaralı siparişin durumu nedir?"` → Agent calls `get_order_status`
-4. **Chat tab** → Type: `"Domates stoğu ne kadar?"` → Agent calls `check_stock`
-5. **Orders tab** → Filter by `"Bekliyor"` → Color-coded status badges
-6. **Inventory tab** → Click "Kritik ürün" button → Red-flagged low-stock cards
+| Veri | Detay |
+|---|---|
+| Müşteriler | 30 kurumsal + 20 bireysel (gerçekçi Türkçe isim/iletişim) |
+| Ürünler | 10 ürün: Domates Salçası, Zeytinyağı, Organik Bal vb. |
+| Siparişler | 150 sipariş (son 30 gün, bugün dahil aktif siparişler) |
+| Kargolar | Her siparişe bağlı kargo + durum geçmişi |
+| Müşteri Mesajları | Kategorize edilmiş gelen mesajlar |
+| Operasyonel Uyarılar | Gecikme, stok, şikayet türü uyarılar |
+
+---
+
+## API Uç Noktaları
+
+```
+POST /auth/login                      — JWT token al
+GET  /dashboard                       — KPI'lar, grafikler, AI içgörüleri
+POST /chat                            — AI agent sohbet
+GET  /orders                          — Sipariş listesi (tarih/durum filtreli)
+GET  /orders/{id}                     — Sipariş detayı
+GET  /shipments                       — Kargo listesi
+GET  /shipments/{id}                  — Kargo detayı
+GET  /inventory                       — Stok seviyeleri
+GET  /messages                        — Müşteri mesajları
+POST /messages                        — Yeni mesaj oluştur
+GET  /operational-alerts              — Operasyonel uyarılar
+GET  /analytics/demand                — Talep trendleri
+GET  /docs                            — Swagger UI
+```
+
+---
 
 ## Tech Stack
 
-| Layer | Technology |
+| Katman | Teknoloji |
 |---|---|
-| Backend | Python 3.9+, FastAPI, Uvicorn |
-| AI | Google Gemini 2.0 Flash (`google-genai` SDK) |
-| Database | SQLite + SQLAlchemy ORM |
-| Mock Data | Faker (tr_TR locale) |
-| Frontend | React 18, Vite, Tailwind CSS v4 |
+| Backend | Python 3.11+, FastAPI, Uvicorn |
+| AI | Groq API — Llama 3.3 70B Versatile |
+| Veritabanı | SQLite + SQLAlchemy 2.x |
+| Kimlik Doğrulama | JWT (python-jose) |
+| Frontend | React 19, Vite, Tailwind CSS v4 |
+| Animasyon | Framer Motion |
+| Grafikler | Recharts |
 
-## API Endpoints
+---
 
-```
-POST /chat                    — AI agent chat
-GET  /orders                  — List orders (filter by status)
-GET  /orders/{id}             — Order detail
-GET  /inventory               — All products with stock levels
-GET  /inventory/alerts        — Products below reorder threshold
-GET  /docs                    — Swagger UI
-```
+## Katkıda Bulunanlar
+
+- [kkbradd](https://github.com/kkbradd)
+- [Mervegulatly](https://github.com/Mervegulatly)
