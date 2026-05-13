@@ -89,17 +89,20 @@ Her 15 dakikada bir:
 
 ### Yapay Zeka
 - **Türkçe Sohbet Ajanı** — "Gecikmiş kargo var mı?", "Zeytinyağı stoğu kaç gün yeter?" gibi doğal dil sorularını anlayıp DB'yi sorgular ve Türkçe iş diliyle yanıtlar
+- **Sesli Chat Girdisi** — Web Speech API (`tr-TR`) üzerinden mikrofonla soru sorma; transcript input'a yazılır, gönderme operatörün kontrolünde (Chrome / Edge / Safari)
 - **4 Özerk Arka Plan Ajanı** — Sürekli çalışır, operasyonel değişimleri tespit eder, yalnızca yeni durumları dashboard'a yazar
+- **7 Günlük Talep Tahmini** — Son 90 günün satış verisinden 14 günlük moving average ile önümüzdeki 7 günün ciro/sipariş öngörüsünü çıkarır; Gemini ile en çok satması beklenen 5 ürünü ve stok yenileme önceliklerini Türkçe iş analiziyle sunar (gereksinim alan 6 karşılığı)
 - **Akıllı Dedup Sistemi** — Context hash karşılaştırması ile aynı durum tekrar tekrar raporlanmaz; sadece gerçek değişim insight üretir
 - **Otomatik Önem Sınıflandırması** — Kritik / Uyarı / Bilgi / İyi — keyword analizi ile dinamik olarak belirlenir
 - **Son 10 Gün Talep Analizi** — En çok sipariş edilen 3 ürünü tespit eder, stok yenileme önerisi üretir
 
 ### Operasyon
-- **Günlük Brifing Paneli** — Dashboard açıldığında "Bugün Ne Oldu?": geciken kargolar, kritik stok, müşteri mesajları
-- **Kargo Pipeline** — Otomatik durum geçişleri: hazırlanıyor → taşımada → şubede → dağıtımda → teslim edildi
+- **08:00 Günlük Özeti** — Dashboard açıldığında depo / kargo / operasyon için 3 rol-bazlı AI özet + somut liste (30 dk cache)
+- **Talep Tahmini Sayfası** — `/forecast`: son 30 gün gerçek + sonraki 7 gün tahmin grafiği (custom SVG, geçmiş emerald solid + tahmin amber kesik), top 5 ürün tablosu (YETERLİ/UYARI/KRİTİK rozetleri), Gemini AI yorumu
+- **Kargo Akışı** — Otomatik durum geçişleri: hazırlanıyor → taşımada → şubede → dağıtımda → teslim edildi
 - **Stok Yönetimi** — Kritik eşik altı ve yeniden sipariş noktası ayrı ayrı izlenir, "Kritik Stokları Doldur" butonu
 - **Müşteri Mesajları** — Kategori/öncelik sınıflandırması, AI özeti, acil mesaj vurgulama
-- **Simülasyon Paneli** — Sipariş Ekle, Kargo Geciktir, Stok Düşür, Şikayet Oluştur, Pipeline Yay, Teslimat Yap
+- **Demo Olayları Paneli** — Sipariş Ekle, Müşteri Ekle, Kargo Geciktir, Stok Düşür, Şikayet Oluştur, Teslimat Yap, Anomali Yarat
 
 ---
 
@@ -112,7 +115,8 @@ Sistemin merkezindeki tasarım prensibi: **AI içerik üretir, operatör onaylar
 | Stok < min_threshold | `inventory_agent` (her 30 dk) | `SupplierOrderDraft` (ürün-bazlı tedarikçi e-postası) | Dashboard → "Tedarikçi Taslakları" paneli |
 | Chat: *"X için tedarikçiye taslak hazırla"* | `chat_agent` (`draft_supplier_order` tool) | `SupplierOrderDraft` | Aynı panel |
 | Kargo gecikme olayı | `simulation._trigger_delayed_shipment` | `CustomerMessage(direction=outbound, is_draft=True)` | Mesajlar sayfası → AI Taslak rozetli kart |
-| Sayfa açılışı (her 30 dk) | `daily_briefing` endpoint | `DailyBriefing` (3 rol için özet + liste) | Dashboard → "08:00 Brifingi" kartı |
+| Sayfa açılışı (her 30 dk) | `daily_briefing` endpoint | `DailyBriefing` (3 rol için özet + liste) | Dashboard → "08:00 Günlük Özeti" kartı |
+| `/forecast` sayfası açılışı (her 30 dk) | `forecast` endpoint | `ForecastResponse` (chart + top 5 ürün + Gemini analizi) | Talep Tahmini sayfası |
 
 **Not:** Demoda gerçek SMTP/WhatsApp entegrasyonu yapılmamıştır. "Gönder" butonu taslak durumunu `sent` olarak işaretler ve `sent_at` zamanı kaydeder. Üretim için yalnızca channel adapter eklenmesi yeterlidir (içerik ve akış hazır).
 
@@ -220,8 +224,10 @@ SECRET_KEY=...      # JWT imzalama anahtarı (rastgele string)
 ```
 POST /auth/login                — JWT token al
 GET  /dashboard                 — KPI'lar, bugünkü olaylar, AI içgörüleri
-POST /chat                      — AI sohbet ajanı
+POST /chat                      — AI sohbet ajanı (Web Speech API ile sesli giriş destekli)
 DELETE /chat/{session_id}       — Oturumu temizle
+GET  /forecast                  — 7 günlük talep tahmini + top 5 ürün + Gemini analizi
+GET  /daily-briefing            — Sabah özeti (depo / kargo / operasyon, 30 dk cache)
 GET  /orders                    — Sipariş listesi (filtreli)
 GET  /orders/{id}               — Sipariş detayı
 GET  /shipments                 — Kargo listesi
@@ -248,7 +254,8 @@ GET  /docs                      — Swagger UI
 | Veritabanı | SQLite + SQLAlchemy 2.x |
 | Kimlik Doğrulama | JWT (python-jose) |
 | Frontend | React 19, Vite, Tailwind CSS v4, Framer Motion |
-| Grafikler | Recharts |
+| Grafikler | Custom inline SVG (bağımlılık yok) |
+| Ses Tanıma | Web Speech API (`tr-TR`, tarayıcı yerleşik) |
 | İkonlar | Lucide React |
 
 ---
@@ -256,9 +263,10 @@ GET  /docs                      — Swagger UI
 ## Demo Akışı (Jüri için)
 
 1. **Login:** `admin@demo.com` / `demo123`
-2. **Dashboard üst kısmı:** "08:00 Brifingi" — depo / kargo / operasyon için 3 sütun, her birinde AI özet + somut liste. Yenile butonuyla brifing yeniden üretilir (30 dk cache).
-3. **Simülasyon → Stok Düşür:** Envanter ajanı bir sonraki çalışmasında (veya manuel `draft_supplier_order` chat tool'u ile) **AI tedarikçi e-posta taslağı** üretir → "Tedarikçi Taslakları" panelinde kart olarak görünür → **E-postayı önizle** ile tam Türkçe profesyonel mail görünür → **Tedarikçiye Gönder** ile durum `sent` olur, ✓ rozeti çıkar.
-4. **Simülasyon → Kargo Geciktir:** Sistem otomatik olarak ilgili müşteri için **gecikme bildirim e-postası taslağı** üretir → Mesajlar sayfasında "📤 AI Taslak" rozetli amber kartta görünür → **Müşteriye Gönder** / **İptal** butonlarıyla yönetilir.
-5. **AI Chat:** *"Karabiber için 80 kg tedarikçi taslağı hazırla"* — chat agent `draft_supplier_order` tool'unu çağırır, taslak üretilir, dashboard'da görünür.
+2. **Dashboard üst kısmı:** "08:00 Günlük Özeti" — depo / kargo / operasyon için 3 sütun, her birinde AI özet + somut liste. Yenile butonuyla özet yeniden üretilir (30 dk cache).
+3. **Demo Olayları → Stok Düşür:** Envanter ajanı bir sonraki çalışmasında (veya manuel `draft_supplier_order` chat tool'u ile) **AI tedarikçi e-posta taslağı** üretir → "Tedarikçi Taslakları" panelinde kart olarak görünür → **E-postayı önizle** ile tam Türkçe profesyonel mail görünür → **Tedarikçiye Gönder** ile durum `sent` olur.
+4. **Demo Olayları → Kargo Geciktir:** Sistem otomatik olarak ilgili müşteri için **gecikme bildirim e-postası taslağı** üretir → Mesajlar sayfasında "AI Taslak" rozetli amber kartta görünür → **Müşteriye Gönder** / **İptal** butonlarıyla yönetilir.
+5. **AI Chat:** *"Karabiber için 80 kg tedarikçi taslağı hazırla"* — chat agent `draft_supplier_order` tool'unu çağırır, taslak üretilir, dashboard'da görünür. Mikrofon butonuyla aynı soruyu **sesli** de sorabilirsiniz (`tr-TR`).
+6. **Talep Tahmini sayfası:** Sol menüden **Talep Tahmini** → 3 KPI kart (7 günlük tahmini ciro, sipariş sayısı, risk altındaki ürün) → custom SVG eğri (son 30g emerald solid + sonraki 7g amber kesik, "BUGÜN" ayırıcı) → en çok satması beklenen 5 ürün tablosu → sağda Gemini'ın 2-3 paragraflık operasyonel analizi.
 
 > Tüm AI üretimleri `GEMINI_API_KEY` yoksa profesyonel template fallback'iyle çalışır; gerçek key ile içerikler ürün/müşteri-spesifik olur.
