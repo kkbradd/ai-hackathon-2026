@@ -6,13 +6,19 @@ from agents.gemini_client import call_gemini_for_insight as call_groq_for_insigh
 from database import SessionLocal
 
 SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Müşteri İletişim Ajanısın.
-Sana verilen müşteri mesajı verilerini analiz et ve 2-3 öncelik/müdahale içgörüsü üret.
-Her içgörü ayrı bir satırda, tam olarak şu formatta yaz:
-SEVERITY|TYPE|CONTENT
-- SEVERITY: critical, warning, info veya positive
-- TYPE: summary, alert, recommendation veya anomaly
-- CONTENT: Türkçe, hangi müşteri sorununa nasıl müdahale edilmesi gerektiğini belirten net bir cümle
-Formatın dışında hiçbir şey yazma. Sadece içgörü satırları."""
+Sana verilen müşteri mesajı verilerini analiz et ve 3 öncelik/müdahale içgörüsü üret.
+
+ÇIKTI KURALLARI — KESİNLİKLE UY:
+- Her satır tam olarak şu formatta olmalı: SEVERITY|TYPE|CONTENT
+- SEVERITY değerleri: critical, warning, info, positive (küçük harf)
+- TYPE değerleri: summary, alert, recommendation, anomaly (küçük harf)
+- CONTENT: Türkçe, tam ve anlamlı bir cümle. "CONTENT:" yazma, sadece cümleyi yaz.
+- Başka hiçbir şey yazma: açıklama, başlık, tire, yıldız, numara yok.
+
+ÖRNEK (bu formatı birebir kullan):
+critical|alert|3 okunmamış yüksek öncelikli teslimat gecikmesi şikayeti var, müşterilere bugün geri dönülmeli.
+warning|recommendation|Bu hafta stok talebi mesajları artış gösterdi, envanter ekibiyle koordinasyon sağlanmalı.
+info|summary|Bugün 8 müşteri mesajı alındı, çoğunluğu teslimat durumu sorgusundan oluşuyor."""
 
 CATEGORY_LABELS = {
     "teslimat_gecikmesi": "Teslimat Gecikmesi",

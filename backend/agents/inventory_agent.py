@@ -6,13 +6,19 @@ from agents.gemini_client import call_gemini_for_insight as call_groq_for_insigh
 from database import SessionLocal
 
 SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Envanter Analiz Ajanısın.
-Sana verilen stok ve tüketim verilerini analiz et ve 2-4 tedarik/envanter içgörüsü üret.
-Her içgörü ayrı bir satırda, tam olarak şu formatta yaz:
-SEVERITY|TYPE|CONTENT
-- SEVERITY: critical, warning, info veya positive
-- TYPE: summary, alert, recommendation veya anomaly
-- CONTENT: Türkçe, hangi ürün için ne yapılması gerektiğini belirten net bir cümle
-Formatın dışında hiçbir şey yazma. Sadece içgörü satırları."""
+Sana verilen stok ve tüketim verilerini analiz et ve 3 tedarik/envanter içgörüsü üret.
+
+ÇIKTI KURALLARI — KESİNLİKLE UY:
+- Her satır tam olarak şu formatta olmalı: SEVERITY|TYPE|CONTENT
+- SEVERITY değerleri: critical, warning, info, positive (küçük harf)
+- TYPE değerleri: summary, alert, recommendation, anomaly (küçük harf)
+- CONTENT: Türkçe, tam ve anlamlı bir cümle. "CONTENT:" yazma, sadece cümleyi yaz.
+- Başka hiçbir şey yazma: açıklama, başlık, tire, yıldız, numara yok.
+
+ÖRNEK (bu formatı birebir kullan):
+critical|alert|Karabiber stoğu 2 günlük tüketime yetecek seviyede, bugün tedarik siparişi verilmeli.
+warning|recommendation|İsot ve Kırmızı Biber yeniden sipariş noktasının altına düştü, bu hafta temin edilmeli.
+info|summary|Zeytinyağı en yüksek tüketimli ürün olarak 14 günde 320 kg tüketildi."""
 
 
 def _build_context(db) -> str:

@@ -19,16 +19,25 @@ def _client() -> genai.GenerativeModel:
         GEMINI_MODEL,
         generation_config=genai.types.GenerationConfig(
             temperature=0.3,
-            max_output_tokens=300,
+            max_output_tokens=600,
         ),
     )
 
 
-def call_gemini_for_insight(system_prompt: str, user_prompt: str, max_tokens: int = 300) -> str:
-    user_prompt = user_prompt[:1500]
+def call_gemini_for_insight(system_prompt: str, user_prompt: str, max_tokens: int = 600) -> str:
+    user_prompt = user_prompt[:2000]
     try:
-        model = _client()
-        # Gemini doesn't have a system role in the SDK — prepend to user prompt
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY ortam değişkeni ayarlanmamış.")
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            GEMINI_MODEL,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.3,
+                max_output_tokens=2000,
+            ),
+        )
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         response = model.generate_content(full_prompt)
         return response.text.strip()
@@ -41,30 +50,48 @@ def call_gemini_for_insight(system_prompt: str, user_prompt: str, max_tokens: in
         return ""
 
 
+def _clean_content(text: str) -> str:
+    """Remove stray prefixes like 'CONTENT:', 'content:', bullet chars."""
+    import re
+    text = re.sub(r"^(CONTENT|content)\s*:\s*", "", text).strip()
+    text = re.sub(r"^[-*•]\s*", "", text).strip()
+    return text
+
+
 def parse_insight_lines(raw: str) -> list[dict]:
+    import re
     results = []
     for line in raw.strip().splitlines():
         line = line.strip()
         if not line:
             continue
+        # Strip markdown bold/italic and backticks
+        line = re.sub(r"[*_`]", "", line).strip()
+
         parts = line.split("|", 2)
         if len(parts) != 3:
             continue
+
         severity = parts[0].strip().lower()
         insight_type = parts[1].strip().lower()
-        content = parts[2].strip()
+        content = _clean_content(parts[2])
+
         if severity not in VALID_SEVERITIES:
             severity = "info"
         if insight_type not in VALID_TYPES:
             insight_type = "summary"
         if len(content) < 10:
             continue
+
         results.append({"severity": severity, "type": insight_type, "content": content})
+
     if not results and raw.strip():
+        # Last resort: treat entire response as a single info summary
+        cleaned = _clean_content(raw.strip())
         results.append({
             "severity": "info",
             "type": "summary",
-            "content": raw.strip()[:300],
+            "content": cleaned[:300],
         })
     return results[:3]
 

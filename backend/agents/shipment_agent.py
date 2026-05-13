@@ -6,13 +6,19 @@ from agents.gemini_client import call_gemini_for_insight as call_groq_for_insigh
 from database import SessionLocal
 
 SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Kargo İzleme Ajanısın.
-Sana verilen kargo pipeline verilerini analiz et ve 2-4 içgörü üret.
-Her içgörü ayrı bir satırda, tam olarak şu formatta yaz:
-SEVERITY|TYPE|CONTENT
-- SEVERITY: critical, warning, info veya positive
-- TYPE: summary, alert, recommendation veya anomaly
-- CONTENT: Türkçe, net ve eyleme yönelik bir cümle
-Formatın dışında hiçbir şey yazma. Sadece içgörü satırları."""
+Sana verilen kargo pipeline verilerini analiz et ve 3 içgörü üret.
+
+ÇIKTI KURALLARI — KESİNLİKLE UY:
+- Her satır tam olarak şu formatta olmalı: SEVERITY|TYPE|CONTENT
+- SEVERITY değerleri: critical, warning, info, positive (küçük harf)
+- TYPE değerleri: summary, alert, recommendation, anomaly (küçük harf)
+- CONTENT: Türkçe, tam ve anlamlı bir cümle. "CONTENT:" yazma, sadece cümleyi yaz.
+- Başka hiçbir şey yazma: açıklama, başlık, tire, yıldız, numara yok.
+
+ÖRNEK (bu formatı birebir kullan):
+critical|alert|3 kargo tahmini teslimat tarihini geçti, kargo firmasıyla acil iletişime geçilmeli.
+info|summary|Son 3 dakikada 7 kargonun durumu güncellendi, pipeline normal akışta ilerliyor.
+positive|summary|Tüm aktif kargolar zamanında teslim sürecinde, gecikme riski bulunmuyor."""
 
 
 def _build_context(db, since: datetime) -> str:
