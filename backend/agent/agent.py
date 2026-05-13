@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from agent.tool_definitions import TOOL_DEFINITIONS
 from agent import tools as tool_fns
 
-GEMINI_MODEL = "gemini-2.0-flash-lite"
+GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin yapay zeka destekli Operasyon Yöneticisisin.

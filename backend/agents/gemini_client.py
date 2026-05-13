@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 VALID_SEVERITIES = {"critical", "warning", "info", "positive"}
 VALID_TYPES = {"summary", "alert", "recommendation", "anomaly"}
 
-GEMINI_MODEL = "gemini-2.0-flash-lite"
+GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 
