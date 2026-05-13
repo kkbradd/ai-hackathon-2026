@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, AlertTriangle, Package, MessageSquare, CheckCircle, RefreshCw, ShoppingCart, UserPlus } from "lucide-react";
+import { Zap, AlertTriangle, Package, MessageSquare, CheckCircle, RefreshCw, ShoppingCart, UserPlus, Sparkles, Sun, Moon, Sunrise, Sunset } from "lucide-react";
 import { useDashboard } from "../../hooks/useDashboard";
+import { useAuth } from "../../store/authStore";
 import { triggerSimulationEvent } from "../../api/client";
 import KpiGrid from "./KpiGrid";
 import TodayBriefSection from "./TodayBriefSection";
@@ -69,7 +70,7 @@ function SimulateButton({ onEvent }) {
             style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}
           >
             <div className="px-3 py-2 mb-1 border-b border-slate-100">
-              <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">Test Senaryoları</p>
+              <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">Demo Olayları</p>
             </div>
             {SIMULATE_EVENTS.map((e) => (
               <button
@@ -90,34 +91,80 @@ function SimulateButton({ onEvent }) {
   );
 }
 
+function getGreeting(hour) {
+  if (hour < 6)  return { label: "İyi geceler",  Icon: Moon,    color: "text-indigo-500" };
+  if (hour < 12) return { label: "Günaydın",     Icon: Sunrise, color: "text-amber-500" };
+  if (hour < 18) return { label: "İyi günler",   Icon: Sun,     color: "text-yellow-500" };
+  if (hour < 22) return { label: "İyi akşamlar", Icon: Sunset,  color: "text-orange-500" };
+  return            { label: "İyi geceler",      Icon: Moon,    color: "text-indigo-500" };
+}
+
 export default function DashboardPanel() {
   const [weeksAgo, setWeeksAgo] = useState(0);
   const { data, loading, error, refresh } = useDashboard(weeksAgo);
+  const { user } = useAuth();
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  const greeting = getGreeting(now.getHours());
+  const firstName = user?.full_name?.split(" ")[0] ?? "Operatör";
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
       <div className="max-w-[1400px] mx-auto px-6 py-6 space-y-10">
 
-        {/* Zone 1 — Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-1">Harman</h1>
-            <p className="text-[12px] font-medium text-slate-400 flex items-center gap-2 flex-wrap">
-              <span>Tarım ve Gıda Kooperatifi</span>
-              <span className="w-1 h-1 rounded-full bg-slate-300" />
-              <span>{new Date().toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span>
-              <span className="w-1 h-1 rounded-full bg-slate-300" />
-              <span className="inline-flex items-center gap-1 text-emerald-600 font-bold">
+        {/* Zone 1 — Editorial header */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950"
+          style={{ padding: "32px 40px", borderRadius: "16px" }}
+        >
+          {/* Atmospheric orbs */}
+          <div className="absolute -top-20 -right-20 w-80 h-80 bg-yellow-500/[0.12] rounded-full blur-[100px] pointer-events-none" />
+          <div className="absolute -bottom-24 -left-16 w-96 h-96 bg-emerald-600/[0.10] rounded-full blur-[120px] pointer-events-none" />
+          {/* Faint dotted grid */}
+          <div
+            className="absolute inset-0 opacity-[0.05] pointer-events-none"
+            style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }}
+          />
+
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-end justify-between gap-5">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 mb-4">
                 <span className="relative flex w-1.5 h-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
                 </span>
-                4 AI ajanı canlı
-              </span>
-            </p>
+                <span className="text-[10px] font-bold text-yellow-300 tracking-[0.22em] uppercase">
+                  Canlı · 4/4 ajan
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 mb-1">
+                <greeting.Icon className={`w-5 h-5 ${greeting.color}`} />
+                <span className="text-[18px] font-semibold text-slate-300">{greeting.label}, {firstName}.</span>
+              </div>
+              <h1 className="text-[32px] sm:text-[38px] lg:text-[42px] font-black text-white tracking-tight leading-[1.05] mt-1">
+                <span className="bg-gradient-to-r from-yellow-300 via-amber-200 to-emerald-300 bg-clip-text text-transparent">
+                  Harman
+                </span>
+                <span className="text-white"> · Operasyon Merkezi</span>
+              </h1>
+              <p className="text-[12.5px] font-medium text-slate-400 mt-3 flex items-center gap-2 flex-wrap">
+                <span>Anadolu Tarım ve Gıda Kooperatifi</span>
+                <span className="w-1 h-1 rounded-full bg-slate-600 shrink-0" />
+                <span className="font-mono">{now.toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" })}</span>
+              </p>
+            </div>
+            <div className="shrink-0">
+              <SimulateButton onEvent={refresh} />
+            </div>
           </div>
-          <SimulateButton onEvent={refresh} />
-        </div>
+        </motion.div>
 
         {/* Error */}
         {error && (
@@ -129,7 +176,7 @@ export default function DashboardPanel() {
         {/* Zone 2 — Today's Operational Brief */}
         <TodayBriefSection data={data} loading={loading} />
 
-        {/* Zone 3 — Sabah brifingi (rol-bazlı, AI özetli) */}
+        {/* Zone 3 — Sabah özeti (rol-bazlı, AI üretimli) */}
         <DailyBriefingCard />
 
         {/* Zone 4 — KPIs */}

@@ -178,7 +178,7 @@ export default function DailyBriefingCard() {
       setData(d);
       setError(null);
     } catch (e) {
-      setError(e?.response?.data?.detail || "Brifing yüklenemedi.");
+      setError(e?.response?.data?.detail || "Günlük özet yüklenemedi.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -193,10 +193,10 @@ export default function DailyBriefingCard() {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
           <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-          <p className="text-[13px] text-slate-500 font-bold">Sabah brifingi hazırlanıyor…</p>
+          <p className="text-[13px] text-slate-500 font-bold">Sabah özeti hazırlanıyor…</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[0, 1, 2].map((i) => (
@@ -209,7 +209,7 @@ export default function DailyBriefingCard() {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-3xl p-5 text-[13px] font-bold text-red-700">
+      <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-[13px] font-bold text-red-700">
         {error}
       </div>
     );
@@ -220,7 +220,7 @@ export default function DailyBriefingCard() {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm"
+      className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm"
     >
       {/* Header */}
       <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-br from-indigo-50/40 to-white">
@@ -232,7 +232,7 @@ export default function DailyBriefingCard() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-[17px] font-black text-slate-900 tracking-tight">
-                  08:00 Brifingi
+                  08:00 Günlük Özeti
                 </h2>
                 <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200">
                   <Sparkles className="w-2.5 h-2.5" />
@@ -253,7 +253,7 @@ export default function DailyBriefingCard() {
             onClick={() => load(true)}
             disabled={refreshing}
             className="p-2 rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50"
-            title="Brifingi yeniden üret"
+            title="Özeti yeniden üret"
           >
             <RefreshCw className={`w-4 h-4 text-slate-500 ${refreshing ? "animate-spin" : ""}`} />
           </button>

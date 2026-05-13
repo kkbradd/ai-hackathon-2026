@@ -59,7 +59,7 @@ function DraftCard({ draft, onSent, onCancelled }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className={`bg-white border rounded-3xl overflow-hidden transition-shadow ${
+      className={`bg-white border rounded-2xl overflow-hidden transition-shadow ${
         isPending ? "border-amber-200 shadow-sm" : "border-slate-200"
       }`}
     >
@@ -265,7 +265,7 @@ export default function SupplierDraftsPanel() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {loading && drafts.length === 0 ? (
-          <div className="h-32 bg-white border border-slate-100 rounded-3xl animate-pulse" />
+          <div className="h-32 bg-white border border-slate-100 rounded-2xl animate-pulse" />
         ) : (
           drafts.map((d) => (
             <DraftCard

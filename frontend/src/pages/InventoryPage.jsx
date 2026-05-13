@@ -64,7 +64,7 @@ function ProductCard({ item, index, view }) {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-      className={`relative border rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow ${borderClass}`}
+      className={`relative border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow ${borderClass}`}
     >
       <div className="flex justify-between items-start mb-4">
         <div>
@@ -148,7 +148,7 @@ function InventorySummaryCard({ count, lowCount, loading }) {
         { label: "Stok Uyarısı", value: lowCount, icon: AlertTriangle, color: "text-amber-600", bg: "bg-amber-100" },
         { label: "Normal Stok", value: count - lowCount, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-100" },
       ].map(({ label, value, icon: Icon, color, bg }) => (
-        <div key={label} className="bg-white border border-slate-200 shadow-sm rounded-3xl p-6 flex items-center gap-5 hover:shadow-md transition-shadow">
+        <div key={label} className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6 flex items-center gap-5 hover:shadow-md transition-shadow">
           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${bg}`}>
             <Icon className={`w-6 h-6 ${color}`} />
           </div>
@@ -250,7 +250,7 @@ export default function InventoryPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-3xl p-5 text-sm font-bold mb-10 flex items-center gap-3">
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-5 text-sm font-bold mb-10 flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 shrink-0" />
             {error}
           </div>
@@ -268,7 +268,7 @@ export default function InventoryPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-gradient-to-r from-amber-50 to-white border border-amber-200 shadow-sm rounded-3xl p-8 mb-14 flex flex-col sm:flex-row sm:items-center gap-4 mt-10"
+            className="bg-gradient-to-r from-amber-50 to-white border border-amber-200 shadow-sm rounded-2xl p-8 mb-14 flex flex-col sm:flex-row sm:items-center gap-4 mt-10"
           >
             <div className="w-10 h-10 bg-amber-100 rounded-2xl flex items-center justify-center shrink-0">
               <AlertTriangle className="w-5 h-5 text-amber-600" />
@@ -284,7 +284,7 @@ export default function InventoryPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-4">
           {loading
             ? Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-64 bg-white border border-slate-100 rounded-3xl shadow-sm animate-pulse" />
+                <div key={i} className="h-64 bg-white border border-slate-100 rounded-2xl shadow-sm animate-pulse" />
               ))
             : data?.items?.map((item, i) => (
                 <ProductCard key={item.id} item={item} index={i} view={activeTab} />
@@ -292,7 +292,7 @@ export default function InventoryPage() {
         </div>
 
         {!loading && !data?.items?.length && (
-          <div className="text-center py-32 bg-white border border-slate-200 rounded-[40px] shadow-sm mt-4">
+          <div className="text-center py-32 bg-white border border-slate-200 rounded-2xl shadow-sm mt-4">
             <Package className="w-16 h-16 text-slate-200 mx-auto mb-4" />
             <p className="text-slate-400 font-black text-xl tracking-tight">Katalog Boş</p>
             <p className="text-slate-400 text-sm font-medium mt-1">Henüz tanımlı ürün bulunmuyor.</p>

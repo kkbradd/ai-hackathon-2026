@@ -109,7 +109,7 @@ function NewMessageModal({ onClose, onCreated }) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 24, scale: 0.97 }}
         transition={{ duration: 0.22 }}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
@@ -353,6 +353,7 @@ function NewMessageModal({ onClose, onCreated }) {
 function MessageCard({ msg, onMarkRead, onDraftAction, index }) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(null);
+  const [bodyOpen, setBodyOpen] = useState(false);
 
   const urgencyCls =
     msg.urgency === "yüksek"
@@ -399,7 +400,7 @@ function MessageCard({ msg, onMarkRead, onDraftAction, index }) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03, duration: 0.3 }}
-      className={`relative group rounded-3xl transition-all hover:shadow-md border p-6 ${cardCls}`}
+      className={`relative group rounded-2xl transition-all hover:shadow-md border p-6 ${cardCls}`}
     >
       <div className="flex flex-col lg:flex-row gap-5 lg:gap-8">
         <div className="flex items-start gap-4 flex-1 min-w-0">
@@ -462,7 +463,39 @@ function MessageCard({ msg, onMarkRead, onDraftAction, index }) {
               </p>
             )}
 
-            <p className="text-[14px] text-slate-600 leading-relaxed line-clamp-4">{msg.body}</p>
+            {/* Body — drafts collapse by default; inbound shows clamped preview */}
+            {isDraft ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setBodyOpen((v) => !v)}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-amber-700 hover:text-amber-800 mb-2"
+                >
+                  <ChevronDown className={`w-3 h-3 transition-transform ${bodyOpen ? "rotate-180" : ""}`} />
+                  {bodyOpen ? "E-postayı gizle" : "E-postayı önizle"}
+                </button>
+                <AnimatePresence initial={false}>
+                  {bodyOpen ? (
+                    <motion.pre
+                      key="open"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-[12.5px] text-slate-700 leading-relaxed font-sans whitespace-pre-wrap bg-white/60 border border-amber-100 rounded-xl px-3 py-2.5 overflow-hidden"
+                    >
+                      {msg.body}
+                    </motion.pre>
+                  ) : (
+                    <p className="text-[12.5px] text-slate-500 leading-snug line-clamp-1 italic">
+                      {msg.body.replace(/\n+/g, " ").trim()}
+                    </p>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <p className="text-[14px] text-slate-600 leading-relaxed line-clamp-3">{msg.body}</p>
+            )}
 
             {(msg.related_order_id || msg.related_shipment_id) && (
               <div className="flex flex-wrap gap-2 mt-4">
@@ -592,9 +625,13 @@ export default function MessagesPage() {
       <div className="max-w-6xl mx-auto px-8 py-12 w-full">
         <div className="flex flex-col gap-10 mb-14">
           <div className="flex flex-wrap items-start justify-between gap-6">
-            <div>
-              <h1 className="text-4xl font-black text-slate-900 tracking-tight">Müşteri iletişimleri</h1>
-              <p className="text-sm font-semibold text-slate-500 mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 leading-relaxed">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-100 to-yellow-50 ring-1 ring-violet-200/60 flex items-center justify-center shrink-0">
+                <Mail className="w-6 h-6 text-violet-700" />
+              </div>
+              <div>
+              <h1 className="text-[28px] sm:text-[32px] font-black text-slate-900 tracking-tight leading-none">Müşteri İletişimleri</h1>
+              <p className="text-[12.5px] font-semibold text-slate-500 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 leading-relaxed">
                 {!loading && data?.stats ? (
                   <>
                     <span>
@@ -623,9 +660,10 @@ export default function MessagesPage() {
                   "Yükleniyor…"
                 )}
               </p>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowNewModal(true)}
@@ -669,7 +707,7 @@ export default function MessagesPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-3xl p-5 text-sm font-bold mb-10">
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-5 text-sm font-bold mb-10">
             {error}
           </div>
         )}
@@ -690,7 +728,7 @@ export default function MessagesPage() {
               />
             ))
           ) : (
-            <div className="text-center py-32 bg-white border border-slate-200 rounded-[40px] shadow-sm">
+            <div className="text-center py-32 bg-white border border-slate-200 rounded-2xl shadow-sm">
               <Inbox className="w-16 h-16 text-slate-200 mx-auto mb-4" />
               <p className="text-slate-400 font-black text-xl tracking-tight">Kayıt yok</p>
               <p className="text-slate-400 text-sm font-medium mt-1">Seçilen filtre için sonuç bulunmadı.</p>

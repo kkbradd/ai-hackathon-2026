@@ -199,4 +199,10 @@ export async function cancelSupplierDraft(draftId) {
   return res.data;
 }
 
+// ── Forecast ──────────────────────────────────────────────────────────────────
+export async function fetchForecast(refresh = false) {
+  const res = await api.get(`/forecast${refresh ? "?refresh=true" : ""}`);
+  return res.data;
+}
+
 export default api;

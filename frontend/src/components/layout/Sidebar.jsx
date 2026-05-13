@@ -10,6 +10,7 @@ import {
   LogOut,
   ChevronRight,
   Bot,
+  TrendingUp,
 } from "lucide-react";
 import { useAuth } from "../../store/authStore";
 
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { to: "/orders",    icon: ClipboardList,   label: "Siparişler",   color: "text-amber-700"  },
   { to: "/shipments", icon: Truck,           label: "Kargo Takip",  color: "text-yellow-600" },
   { to: "/inventory", icon: Package,         label: "Envanter",     color: "text-green-600"  },
+  { to: "/forecast",  icon: TrendingUp,      label: "Talep Tahmini",color: "text-emerald-700"},
   { to: "/messages",  icon: MessageSquare,   label: "Mesajlar",     color: "text-amber-600"  },
 ];
 

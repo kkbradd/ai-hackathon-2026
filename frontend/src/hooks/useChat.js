@@ -6,7 +6,7 @@ export function useChat() {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      text: "Merhaba! Ben **Tarım ve Gıda Kooperatifi** AI Operasyon Asistanınım.\n\nSipariş yönetimi, kargo takibi, **stok uyarıları**, talep trendleri ve kapsamlı operasyon raporları için sorularınızı sorabilirsiniz.\n\nProaktif olarak çalışıyorum — kritik durumları siz sormadan önce tespit ederim.",
+      text: "Merhaba! Ben **Tarım ve Gıda Kooperatifi** AI Operasyon Yardımcınızım.\n\nSipariş yönetimi, kargo takibi, **stok uyarıları**, talep trendleri ve kapsamlı operasyon raporları için sorularınızı sorabilirsiniz.\n\nProaktif olarak çalışıyorum — kritik durumları siz sormadan önce tespit ederim.",
       timestamp: new Date().toISOString(),
     },
   ]);

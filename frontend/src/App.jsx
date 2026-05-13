@@ -7,6 +7,7 @@ import ChatPanel from "./components/chat/ChatPanel";
 import OrdersPanel from "./components/orders/OrdersPanel";
 import ShipmentsPanel from "./components/shipments/ShipmentsPanel";
 import InventoryPage from "./pages/InventoryPage";
+import ForecastPage from "./pages/ForecastPage";
 import MessagesPage from "./pages/MessagesPage";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/orders" element={<OrdersPanel />} />
             <Route path="/shipments" element={<ShipmentsPanel />} />
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/forecast" element={<ForecastPage />} />
             <Route path="/messages" element={<MessagesPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

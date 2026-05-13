@@ -13,6 +13,7 @@ const PAGE_LABELS = {
   "/orders":    { label: "Siparişler",   sub: "Sipariş Yönetimi" },
   "/shipments": { label: "Kargo Takip",  sub: "Lojistik İzleme" },
   "/inventory": { label: "Envanter",     sub: "Stok Yönetimi" },
+  "/forecast":  { label: "Talep Tahmini",sub: "7 Günlük Öngörü" },
   "/messages":  { label: "Mesajlar",     sub: "Müşteri İletişimi" },
 };
 
@@ -56,6 +57,9 @@ export default function TopBar() {
     <header className="h-[60px] bg-white border-b border-slate-100 flex items-center px-6 gap-4 shrink-0 z-20">
       {/* Left — Page identity */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="w-7 h-7 rounded-lg overflow-hidden ring-1 ring-yellow-200/60 shrink-0 hidden sm:flex">
+          <img src="/harman-logo.png" alt="" className="w-full h-full object-cover" />
+        </div>
         <AnimatePresence mode="wait">
           <motion.div
             key={pathname}
@@ -63,19 +67,23 @@ export default function TopBar() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
-            className="flex flex-col"
+            className="flex flex-col min-w-0"
           >
-            <span className="text-[14px] font-bold text-slate-900 leading-tight">{pageInfo.label}</span>
-            <span className="text-[11px] font-medium text-slate-400 leading-tight">{pageInfo.sub}</span>
+            <span className="text-[14px] font-bold text-slate-900 leading-tight truncate">{pageInfo.label}</span>
+            <span className="text-[11px] font-medium text-slate-400 leading-tight truncate">{pageInfo.sub}</span>
           </motion.div>
         </AnimatePresence>
       </div>
 
-      {/* Center — Live status + clock */}
+      {/* Center — Live AI status + clock */}
       <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2.5 pointer-events-none">
-        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-full">
-          <Activity className="w-3 h-3 text-slate-500" />
-          <span className="text-[11px] font-semibold text-slate-600">Oturum</span>
+        <div className="flex items-center gap-1.5 bg-gradient-to-r from-yellow-50 to-emerald-50 border border-yellow-100/80 px-2.5 py-1 rounded-full">
+          <span className="relative flex w-1.5 h-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+          </span>
+          <Activity className="w-3 h-3 text-emerald-700" />
+          <span className="text-[11px] font-bold text-slate-700">4/4 AI ajanı</span>
         </div>
         <span className="text-[11px] text-slate-400 tabular-nums font-medium">
           {format(now, "d MMM · HH:mm:ss", { locale: tr })}

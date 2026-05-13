@@ -6,13 +6,13 @@ import { fetchShipmentDetail } from "../../api/client";
 import ShipmentTimeline from "./ShipmentTimeline";
 
 const STATUS_CONFIG = {
-  preparing:        { label: "Hazırlanıyor",    cls: "bg-slate-100 text-slate-700 border border-slate-200" },
-  in_transit:       { label: "Taşımada",        cls: "bg-blue-100 text-blue-700 border border-blue-200" },
-  at_facility:      { label: "Şubede",          cls: "bg-amber-100 text-amber-700 border border-amber-200" },
-  out_for_delivery: { label: "Dağıtımda",       cls: "bg-indigo-100 text-indigo-700 border border-indigo-200" },
-  delivered:        { label: "Teslim Edildi",   cls: "bg-emerald-100 text-emerald-700 border border-emerald-200" },
-  failed:           { label: "Teslim Edilemedi",cls: "bg-red-100 text-red-700 border border-red-200" },
-  returned:         { label: "İade Edildi",     cls: "bg-orange-100 text-orange-700 border border-orange-200" },
+  preparing:        { label: "Hazırlanıyor",    cls: "bg-slate-100 text-slate-700 border border-slate-200",         dot: "bg-slate-500"   },
+  in_transit:       { label: "Taşımada",        cls: "bg-blue-100 text-blue-700 border border-blue-200",            dot: "bg-blue-500"    },
+  at_facility:      { label: "Şubede",          cls: "bg-amber-100 text-amber-700 border border-amber-200",         dot: "bg-amber-500"   },
+  out_for_delivery: { label: "Dağıtımda",       cls: "bg-indigo-100 text-indigo-700 border border-indigo-200",      dot: "bg-indigo-500"  },
+  delivered:        { label: "Teslim Edildi",   cls: "bg-emerald-100 text-emerald-700 border border-emerald-200",   dot: "bg-emerald-500" },
+  failed:           { label: "Teslim Edilemedi",cls: "bg-red-100 text-red-700 border border-red-200",               dot: "bg-red-500"     },
+  returned:         { label: "İade Edildi",     cls: "bg-orange-100 text-orange-700 border border-orange-200",      dot: "bg-orange-500"  },
 };
 
 const CARRIER_COLORS = {
@@ -32,9 +32,10 @@ const STATUS_FILTERS = [
 ];
 
 function StatusBadge({ status }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, cls: "bg-slate-100 text-slate-600 border border-slate-200" };
+  const cfg = STATUS_CONFIG[status] ?? { label: status, cls: "bg-slate-100 text-slate-600 border border-slate-200", dot: "bg-slate-400" };
   return (
-    <span className={`inline-flex px-2.5 py-1 rounded-lg text-[12px] font-bold tracking-wide uppercase ${cfg.cls}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-bold tracking-wide uppercase ${cfg.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
       {cfg.label}
     </span>
   );
@@ -79,14 +80,26 @@ export default function ShipmentsPanel() {
       {/* Left: list */}
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         {/* Header */}
-        <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 shrink-0 shadow-sm z-20">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h2 className="text-[18px] font-extrabold text-slate-900 tracking-tight">Kargo Takip</h2>
+        <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 sm:px-8 pt-6 pb-4 shrink-0 shadow-sm z-20">
+          <div className="flex items-end justify-between gap-3 mb-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-100 to-yellow-50 ring-1 ring-blue-200/60 flex items-center justify-center shrink-0">
+                <Truck className="w-6 h-6 text-blue-700" />
+              </div>
+              <div>
+                <h1 className="text-[28px] sm:text-[32px] font-black text-slate-900 tracking-tight leading-none">
+                  Kargo Takip
+                </h1>
+                <p className="text-[12.5px] font-semibold text-slate-500 mt-2 flex flex-wrap items-center gap-2">
+                  <span>Lojistik izleme · {shipments?.length ?? 0} aktif kargo</span>
+                </p>
+              </div>
+            </div>
             {delayedCount > 0 && (
               <motion.span
                 initial={{ scale: 0.8 }}
                 animate={{ scale: 1 }}
-                className="flex items-center gap-1.5 text-[11px] text-red-700 bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg font-bold shadow-sm"
+                className="flex items-center gap-1.5 text-[11px] text-red-700 bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg font-bold shadow-sm shrink-0"
               >
                 <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                 {delayedCount} gecikmiş
@@ -116,20 +129,22 @@ export default function ShipmentsPanel() {
           {error && <div className="p-4 text-[13px] font-medium text-red-700 bg-red-50 border-b border-red-200">{error}</div>}
           {!loading && !error && (
             <div>
-              {shipments.map((s) => (
+              {shipments.map((s, idx) => {
+                const zebra = idx % 2 === 1 ? "bg-slate-50/40" : "bg-white";
+                return (
                 <motion.button
                   key={s.id}
                   whileHover={{ x: 2 }}
                   transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   onClick={() => openDetail(s.id)}
-                  className={`w-full text-left px-6 py-4 border-b transition-colors ${
+                  className={`w-full text-left px-6 py-4 border-b border-slate-100/80 transition-colors ${
                     s.is_delayed
-                      ? `bg-gradient-to-r from-red-50/95 to-white border-red-100/80 shadow-sm border-l-4 border-l-red-300 ${
+                      ? `bg-gradient-to-r from-red-50/95 to-white border-l-4 border-l-red-400 shadow-sm ${
                           selected?.id === s.id ? "ring-2 ring-inset ring-red-200/70" : ""
                         }`
                       : selected?.id === s.id
-                      ? "bg-indigo-50 border-slate-100 border-l-4 border-l-indigo-500"
-                      : "hover:bg-slate-50 border-slate-100 border-l-4 border-l-transparent"
+                      ? "bg-indigo-50 border-l-4 border-l-indigo-500"
+                      : `${zebra} hover:bg-indigo-50/40 border-l-4 border-l-transparent`
                   }`}
                 >
                   {/* Row 1 */}
@@ -175,7 +190,8 @@ export default function ShipmentsPanel() {
                     </div>
                   )}
                 </motion.button>
-              ))}
+                );
+              })}
 
               {shipments.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-24">

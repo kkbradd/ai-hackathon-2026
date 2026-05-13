@@ -13,7 +13,7 @@ export function useDashboard(weeksAgo = 0) {
       setData(result);
       setError("");
     } catch (e) {
-      setError("Dashboard yüklenemedi.");
+      setError("Genel bakış yüklenemedi.");
     } finally {
       setLoading(false);
     }

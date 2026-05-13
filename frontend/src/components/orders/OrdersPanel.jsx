@@ -72,18 +72,32 @@ export default function OrdersPanel() {
   return (
     <div className="flex flex-col h-full bg-transparent">
       {/* Üst araç çubuğu — arama tablo başlığıyla çakışmaz */}
-      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 pt-4 pb-3 shrink-0 z-30 shadow-sm relative">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <h2 className="text-[18px] font-extrabold text-slate-900 tracking-tight text-center sm:text-left">
-            Siparişler
-          </h2>
+      <div className="bg-white border-b border-slate-200 px-4 sm:px-8 pt-6 pb-3 shrink-0 z-30 shadow-sm relative">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-5">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-100 to-yellow-50 ring-1 ring-amber-200/60 flex items-center justify-center shrink-0">
+              <ClipboardList className="w-6 h-6 text-amber-700" />
+            </div>
+            <div>
+              <h1 className="text-[28px] sm:text-[32px] font-black text-slate-900 tracking-tight leading-none">
+                Siparişler
+              </h1>
+              <p className="text-[12.5px] font-semibold text-slate-500 mt-2 flex flex-wrap items-center gap-2">
+                <span>Sipariş yönetimi</span>
+                {!loading && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                    <span>{filteredOrders.length} listede</span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
           {!loading && (
-            <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2">
-              <span className="text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg tabular-nums">
+            <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 shrink-0">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1.5 rounded-lg tabular-nums">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 Açık hat: {meta.pending_pipeline}
-              </span>
-              <span className="text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-lg tabular-nums">
-                Listede: {filteredOrders.length}
               </span>
             </div>
           )}
@@ -131,7 +145,8 @@ export default function OrdersPanel() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Müşteri veya sipariş no ara…"
-            className="w-full pl-10 pr-4 py-2.5 text-[13px] font-medium bg-white border border-slate-300 text-slate-800 placeholder-slate-400 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-sm transition-all"
+            style={{ paddingLeft: "40px", paddingRight: "16px" }}
+            className="w-full py-2.5 text-[13px] font-medium bg-white border border-slate-300 text-slate-800 placeholder-slate-400 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-sm transition-all"
           />
         </div>
 
@@ -160,13 +175,14 @@ export default function OrdersPanel() {
         </div>
       </div>
 
-      <div className="sticky top-0 z-20 flex items-center gap-4 px-6 py-3 bg-slate-50 border-b border-slate-200 shrink-0">
-        <div className="flex-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Müşteri</div>
-        <div className="w-20 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">Kalem</div>
-        <div className="w-28 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">Toplam</div>
-        <div className="w-28 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right hidden sm:block">
+      <div className="sticky top-0 z-20 flex items-center gap-4 px-6 py-3 bg-gradient-to-b from-slate-100 to-slate-50 border-b border-slate-200 shrink-0">
+        <div className="flex-1 text-[10.5px] font-extrabold text-slate-500 uppercase tracking-[0.14em]">Müşteri</div>
+        <div className="w-20 text-[10.5px] font-extrabold text-slate-500 uppercase tracking-[0.14em] text-right">Kalem</div>
+        <div className="w-28 text-[10.5px] font-extrabold text-slate-500 uppercase tracking-[0.14em] text-right">Toplam</div>
+        <div className="w-28 text-[10.5px] font-extrabold text-slate-500 uppercase tracking-[0.14em] text-right hidden sm:block">
           Tarih
         </div>
+        <div className="w-4 shrink-0" />
       </div>
 
       <div className="flex-1 overflow-auto bg-white">
@@ -178,16 +194,17 @@ export default function OrdersPanel() {
 
         {!loading && !error && (
           <>
-            {filteredOrders.map((order) => {
+            {filteredOrders.map((order, idx) => {
               const isExpanded = expandedId === order.order_id;
               const typeConfig = CUSTOMER_TYPE_CONFIG[order.customer_type] || CUSTOMER_TYPE_CONFIG.kurumsal;
+              const zebra = idx % 2 === 1 ? "bg-slate-50/40" : "bg-white";
               return (
-                <div key={order.order_id} className="border-b border-slate-100">
+                <div key={order.order_id} className="border-b border-slate-100/80">
                   <motion.div
                     whileHover={{ x: 2 }}
                     transition={{ type: "spring", stiffness: 500, damping: 30 }}
                     onClick={() => setExpandedId(isExpanded ? null : order.order_id)}
-                    className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                    className={`flex items-center gap-4 px-6 py-4 ${isExpanded ? "bg-indigo-50/60" : zebra} hover:bg-indigo-50/40 transition-colors cursor-pointer`}
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[12px] font-extrabold shrink-0">
@@ -209,8 +226,11 @@ export default function OrdersPanel() {
                     </div>
 
                     <div className="w-28 text-right shrink-0">
-                      <span className="text-[15px] font-extrabold text-slate-900 tabular-nums">
-                        ₺{order.total?.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                      <span className="inline-flex items-baseline gap-0.5">
+                        <span className="text-[11px] font-bold text-emerald-600/80 tabular-nums">₺</span>
+                        <span className="text-[15px] font-extrabold text-slate-900 tabular-nums tracking-tight">
+                          {order.total?.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                        </span>
                       </span>
                     </div>
 
