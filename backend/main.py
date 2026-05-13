@@ -12,17 +12,30 @@ from models import (  # noqa: F401
     User, Customer, Product, Order, OrderItem,
     Shipment, ShipmentUpdate, CustomerMessage,
     Inventory, InventoryMovement, OperationalAlert,
-    AIInsight,
+    AIInsight, SupplierOrderDraft,
 )
 from agents.orchestrator import AgentOrchestrator
 from routers import auth, chat, orders, shipments, dashboard
 from routers import inventory, operational_alerts, analytics, simulate, messages, customers
-from routers import insights
+from routers import insights, supplier_drafts
+
+
+def _ensure_columns():
+    """Idempotent SQLite migration: add columns introduced after initial seed."""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(customer_messages)"))}
+        if "is_draft" not in cols:
+            conn.execute(text("ALTER TABLE customer_messages ADD COLUMN is_draft BOOLEAN DEFAULT 0 NOT NULL"))
+        if "sent_at" not in cols:
+            conn.execute(text("ALTER TABLE customer_messages ADD COLUMN sent_at DATETIME"))
+        conn.commit()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
     orchestrator = AgentOrchestrator()
     await orchestrator.start()
     yield
@@ -56,6 +69,7 @@ app.include_router(simulate.router)
 app.include_router(messages.router)
 app.include_router(customers.router)
 app.include_router(insights.router)
+app.include_router(supplier_drafts.router)
 
 
 @app.get("/")

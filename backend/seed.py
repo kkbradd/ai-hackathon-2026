@@ -658,11 +658,16 @@ def seed():
         try:
             scan_now = datetime.utcnow()
             scan_today = scan_now.replace(hour=0, minute=0, second=0, microsecond=0)
-            sim._scan_delayed_shipments(scan_db, scan_now)
-            sim._scan_low_stock_hourly(scan_db)
-            sim._scan_message_complaints(scan_db, scan_today)
-            sim._scan_overdue_orders(scan_db, scan_now)
-            sim._scan_restock_suggestions(scan_db, scan_now)
+            for fn_name, args in [
+                ("_scan_delayed_shipments", (scan_db, scan_now)),
+                ("_scan_low_stock_hourly", (scan_db,)),
+                ("_scan_message_complaints", (scan_db, scan_today)),
+                ("_scan_overdue_orders", (scan_db, scan_now)),
+                ("_scan_restock_suggestions", (scan_db, scan_now)),
+            ]:
+                fn = getattr(sim, fn_name, None)
+                if fn:
+                    fn(*args)
             scan_db.commit()
             alert_count = scan_db.query(OperationalAlert).count()
             print(f"✓ {alert_count} operational alerts from real-time scans")

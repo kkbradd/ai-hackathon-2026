@@ -138,6 +138,8 @@ class CustomerMessage(Base):
     ai_summary = Column(Text, nullable=True)
     related_order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
     related_shipment_id = Column(Integer, ForeignKey("shipments.id"), nullable=True)
+    is_draft = Column(Boolean, default=False, nullable=False)
+    sent_at = Column(DateTime, nullable=True)
 
     customer = relationship("Customer", back_populates="messages")
 
@@ -181,6 +183,26 @@ class OperationalAlert(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     resolved_at = Column(DateTime, nullable=True)
     related_entity_id = Column(Integer, nullable=True)
+
+
+class SupplierOrderDraft(Base):
+    """Tedarikçiye gönderilmek üzere AI tarafından üretilmiş e-posta taslağı."""
+    __tablename__ = "supplier_order_drafts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    quantity = Column(Float, nullable=False)
+    unit = Column(String, nullable=False, default="kg")
+    supplier_email = Column(String, nullable=False)
+    supplier_name = Column(String, nullable=True)
+    subject = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    status = Column(String, nullable=False, default="draft")  # draft | sent | cancelled
+    created_at = Column(DateTime, default=datetime.utcnow)
+    sent_at = Column(DateTime, nullable=True)
+    triggered_by = Column(String, nullable=True)  # 'agent' | 'chat' | 'manual'
+
+    product = relationship("Product")
 
 
 class AIInsight(Base):

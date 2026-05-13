@@ -8,6 +8,7 @@ import TodayMessagesCard from "./TodayMessagesCard";
 import AnalyticsSection from "./AnalyticsSection";
 import AIInsightsSection from "./AIInsightsSection";
 import ActivityFeed from "./ActivityFeed";
+import SupplierDraftsPanel from "./SupplierDraftsPanel";
 
 const SIMULATE_EVENTS = [
   { type: "new_order",        label: "Sipariş Ekle",    Icon: ShoppingCart,  color: "text-blue-600 bg-blue-50" },
@@ -126,6 +127,11 @@ export default function DashboardPanel() {
           weeksAgo={weeksAgo}
           setWeeksAgo={setWeeksAgo}
         />
+
+        {/* Zone 3.5 — Supplier email drafts (AI üretimli, kullanıcı onayıyla iletilir) */}
+        <div className="pt-10 border-t border-slate-100/80 mt-12">
+          <SupplierDraftsPanel />
+        </div>
 
         {/* Zone 4 — AI Insights + Alerts */}
         <div className="pt-10 border-t border-slate-100/80 mt-12">

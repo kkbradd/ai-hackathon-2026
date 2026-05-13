@@ -5,7 +5,7 @@ from sqlalchemy import func, or_, text
 from models import (
     Order, OrderItem, Product, Customer, OrderStatus,
     Shipment, ShipmentUpdate, CustomerMessage,
-    Inventory, OperationalAlert,
+    Inventory, OperationalAlert, SupplierOrderDraft,
 )
 
 
@@ -435,26 +435,46 @@ def update_shipment_status(db: Session, shipment_id: int, new_status: str, locat
 
 
 def draft_supplier_order(db: Session, product_id: int, quantity: float) -> dict:
-    """Tedarikçiye verilmek üzere bir sipariş taslağı (Alert) oluşturur."""
+    """Tedarikçiye gönderilmek üzere AI ile e-posta taslağı oluşturur (gerçekten göndermez)."""
+    from email_drafter import draft_supplier_email
+
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         return {"error": f"{product_id} ID'li ürün bulunamadı."}
-        
-    # Sisteme yeni bir alert olarak taslağı ekleyelim.
-    alert = OperationalAlert(
-        type="supplier_order_draft",
-        severity="info",
-        title=f"Tedarikçi Siparişi Taslağı: {product.name}",
-        description=f"{product.name} ürününden tedarikçiden {quantity} {product.unit} sipariş edilmesi önerilmektedir.",
-        is_resolved=False,
-        related_entity_id=product.id
+
+    inv = db.query(Inventory).filter(Inventory.product_id == product_id).first()
+    current_stock = inv.quantity_kg if inv else 0.0
+    reorder_point = inv.reorder_point if inv else 0.0
+
+    email = draft_supplier_email(
+        product_name=product.name,
+        category=product.category,
+        quantity=quantity,
+        unit=product.unit,
+        current_stock=current_stock,
+        reorder_point=reorder_point,
     )
-    db.add(alert)
+
+    draft = SupplierOrderDraft(
+        product_id=product.id,
+        quantity=quantity,
+        unit=product.unit,
+        supplier_email=email["supplier_email"],
+        supplier_name=email["supplier_name"],
+        subject=email["subject"],
+        body=email["body"],
+        status="draft",
+        triggered_by="chat",
+    )
+    db.add(draft)
     db.commit()
-    
+
     return {
-        "message": f"{product.name} için {quantity} {product.unit} miktarında tedarikçi siparişi taslağı oluşturuldu.",
-        "draft_alert_id": alert.id
+        "message": f"{product.name} için {quantity} {product.unit} tedarikçi e-posta taslağı oluşturuldu. UI'dan inceleyip 'Gönder' butonuyla iletebilirsiniz.",
+        "draft_id": draft.id,
+        "supplier": email["supplier_name"],
+        "supplier_email": email["supplier_email"],
+        "subject": email["subject"],
     }
 
 

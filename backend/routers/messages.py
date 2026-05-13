@@ -127,6 +127,8 @@ def list_messages(
                 ai_summary=m.ai_summary,
                 related_order_id=m.related_order_id,
                 related_shipment_id=m.related_shipment_id,
+                is_draft=bool(getattr(m, "is_draft", False)),
+                sent_at=m.sent_at.strftime("%d.%m.%Y %H:%M") if getattr(m, "sent_at", None) else None,
             )
         )
 
@@ -218,3 +220,41 @@ def mark_as_read(
     msg.is_read = True
     db.commit()
     return {"status": "ok"}
+
+
+@router.post("/{message_id}/send")
+def send_draft_message(
+    message_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Outbound taslak mesajı 'gönderildi' olarak işaretle (gerçek SMTP yok)."""
+    msg = db.query(CustomerMessage).filter(CustomerMessage.id == message_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mesaj bulunamadı.")
+    if msg.direction != "outbound" or not msg.is_draft:
+        raise HTTPException(status_code=400, detail="Sadece outbound taslak mesajlar gönderilebilir.")
+    msg.is_draft = False
+    msg.sent_at = datetime.utcnow()
+    db.commit()
+    return {
+        "detail": f"Mesaj {msg.customer.email} adresine gönderildi (simülasyon).",
+        "id": msg.id,
+        "sent_at": msg.sent_at.strftime("%d.%m.%Y %H:%M"),
+    }
+
+
+@router.post("/{message_id}/cancel")
+def cancel_draft_message(
+    message_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    msg = db.query(CustomerMessage).filter(CustomerMessage.id == message_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mesaj bulunamadı.")
+    if not msg.is_draft:
+        raise HTTPException(status_code=400, detail="Sadece taslak mesajlar iptal edilebilir.")
+    db.delete(msg)
+    db.commit()
+    return {"detail": "Taslak iptal edildi.", "id": message_id}

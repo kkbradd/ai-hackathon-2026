@@ -92,19 +92,74 @@ En Yüksek Tüketim (14 gün):
 """.strip()
 
 
+def _auto_draft_supplier_orders(db) -> int:
+    """Kritik stok altındaki ürünler için tedarikçi e-posta taslakları üret."""
+    from models import Inventory, Product, SupplierOrderDraft
+    from email_drafter import draft_supplier_email
+
+    critical = db.execute(text("""
+        SELECT i.product_id, i.quantity_kg, i.min_threshold, i.reorder_point
+        FROM inventory i
+        WHERE i.quantity_kg < i.min_threshold
+        ORDER BY (i.quantity_kg / NULLIF(i.min_threshold, 0)) ASC
+        LIMIT 3
+    """)).fetchall()
+
+    created = 0
+    for row in critical:
+        existing = (
+            db.query(SupplierOrderDraft)
+            .filter(
+                SupplierOrderDraft.product_id == row.product_id,
+                SupplierOrderDraft.status == "draft",
+            )
+            .first()
+        )
+        if existing:
+            continue
+        product = db.query(Product).filter(Product.id == row.product_id).first()
+        if not product:
+            continue
+        suggested_qty = max(row.reorder_point * 1.5 - row.quantity_kg, 50)
+        email = draft_supplier_email(
+            product_name=product.name,
+            category=product.category,
+            quantity=suggested_qty,
+            unit=product.unit,
+            current_stock=row.quantity_kg,
+            reorder_point=row.reorder_point,
+        )
+        db.add(SupplierOrderDraft(
+            product_id=product.id,
+            quantity=suggested_qty,
+            unit=product.unit,
+            supplier_email=email["supplier_email"],
+            supplier_name=email["supplier_name"],
+            subject=email["subject"],
+            body=email["body"],
+            status="draft",
+            triggered_by="agent",
+        ))
+        created += 1
+    return created
+
+
 def run_inventory_agent() -> None:
     db = SessionLocal()
     try:
         context = _build_context(db)
         raw = call_groq_for_insight(SYSTEM_PROMPT, context, max_tokens=250)
-        if not raw:
-            return
-        insights = parse_insight_lines(raw)
-        for insight in insights:
-            insight["entity_type"] = "inventory"
-        write_insights(db, insights, "inventory")
+        if raw:
+            insights = parse_insight_lines(raw)
+            for insight in insights:
+                insight["entity_type"] = "inventory"
+            write_insights(db, insights, "inventory")
+            print(f"[Agent:inventory] {len(insights)} içgörü yazıldı.")
+
+        drafts = _auto_draft_supplier_orders(db)
+        if drafts:
+            print(f"[Agent:inventory] {drafts} tedarikçi e-posta taslağı üretildi.")
         db.commit()
-        print(f"[Agent:inventory] {len(insights)} içgörü yazıldı.")
     except Exception as e:
         db.rollback()
         print(f"[Agent:inventory] Hata: {e}")

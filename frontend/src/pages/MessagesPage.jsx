@@ -7,7 +7,10 @@ import {
   Send, ChevronDown,
 } from "lucide-react";
 import { useMessages } from "../hooks/useMessages";
-import { createMessage, fetchMessageCategories, fetchCustomers } from "../api/client";
+import {
+  createMessage, fetchMessageCategories, fetchCustomers,
+  sendDraftMessage, cancelDraftMessage,
+} from "../api/client";
 
 const CATEGORY_OPTIONS = [
   { value: "", label: "Tüm kategoriler" },
@@ -347,8 +350,9 @@ function NewMessageModal({ onClose, onCreated }) {
 
 // ── Message Card ──────────────────────────────────────────────────────────────
 
-function MessageCard({ msg, onMarkRead, index }) {
+function MessageCard({ msg, onMarkRead, onDraftAction, index }) {
   const navigate = useNavigate();
+  const [busy, setBusy] = useState(null);
 
   const urgencyCls =
     msg.urgency === "yüksek"
@@ -357,14 +361,45 @@ function MessageCard({ msg, onMarkRead, index }) {
       ? "bg-slate-100 text-slate-600 border-slate-200"
       : "bg-amber-50 text-amber-900 border-amber-200/80";
 
+  async function handleSend() {
+    setBusy("send");
+    try {
+      const res = await sendDraftMessage(msg.id);
+      onDraftAction?.({ ok: true, msg: res?.detail || "Gönderildi." });
+    } catch (e) {
+      onDraftAction?.({ ok: false, msg: e?.response?.data?.detail || "Gönderim başarısız." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleCancel() {
+    if (!confirm("Bu taslak iptal edilsin mi?")) return;
+    setBusy("cancel");
+    try {
+      await cancelDraftMessage(msg.id);
+      onDraftAction?.({ ok: true, msg: "Taslak iptal edildi." });
+    } catch (e) {
+      onDraftAction?.({ ok: false, msg: e?.response?.data?.detail || "İptal başarısız." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Draft border/background takes priority
+  const isDraft = msg.is_draft;
+  const cardCls = isDraft
+    ? "border-amber-300 bg-amber-50/40 shadow-sm"
+    : msg.is_read
+    ? "border-slate-200 bg-white"
+    : "border-indigo-200 bg-indigo-50/30 shadow-sm";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03, duration: 0.3 }}
-      className={`relative group rounded-3xl transition-all hover:shadow-md border p-6 ${
-        msg.is_read ? "border-slate-200 bg-white" : "border-indigo-200 bg-indigo-50/30 shadow-sm"
-      }`}
+      className={`relative group rounded-3xl transition-all hover:shadow-md border p-6 ${cardCls}`}
     >
       <div className="flex flex-col lg:flex-row gap-5 lg:gap-8">
         <div className="flex items-start gap-4 flex-1 min-w-0">
@@ -389,9 +424,25 @@ function MessageCard({ msg, onMarkRead, index }) {
                 {msg.customer_name}
               </span>
               <span className="text-[11px] font-medium text-slate-400 truncate">{msg.customer_email}</span>
-              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">
-                {msg.direction === "outbound" ? "Giden" : "Gelen"}
+              <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                isDraft
+                  ? "bg-amber-100 text-amber-800 border-amber-300"
+                  : msg.direction === "outbound"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-slate-100 text-slate-500 border-slate-200"
+              }`}>
+                {isDraft
+                  ? "📤 AI Taslak"
+                  : msg.direction === "outbound"
+                  ? "✓ Gönderilen"
+                  : "Gelen"}
               </span>
+              {msg.direction === "outbound" && msg.ai_generated && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  AI üretimli
+                </span>
+              )}
               {msg.direction === "inbound" && msg.category && (
                 <span className="text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded-full">
                   {msg.category.replace(/_/g, " ")}
@@ -448,6 +499,39 @@ function MessageCard({ msg, onMarkRead, index }) {
                 <ChevronRight className="w-4 h-4" />
               </button>
             )}
+
+            {isDraft && (
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={!!busy}
+                  className="inline-flex items-center gap-2 text-[12px] font-black text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-xl shadow-sm disabled:opacity-60 transition-colors"
+                >
+                  {busy === "send" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {busy === "send" ? "Gönderiliyor…" : "Müşteriye Gönder"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  disabled={!!busy}
+                  className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2 rounded-xl disabled:opacity-60 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  İptal
+                </button>
+                <span className="text-[11px] text-slate-500 font-medium ml-1">
+                  AI taslağı operatör onayı bekliyor
+                </span>
+              </div>
+            )}
+
+            {msg.direction === "outbound" && !isDraft && msg.sent_at && (
+              <p className="mt-4 inline-flex items-center gap-1.5 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg font-semibold">
+                <CheckCircle className="w-3 h-3" />
+                {msg.sent_at} tarihinde gönderildi
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -467,6 +551,7 @@ export default function MessagesPage() {
   const { data, loading, error, refresh, markAsRead } = useMessages();
   const [categoryFilter, setCategoryFilter] = useState("");
   const [showNewModal, setShowNewModal] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const filtered = useMemo(() => {
     const list = data?.messages ?? [];
@@ -476,12 +561,34 @@ export default function MessagesPage() {
     );
   }, [data?.messages, categoryFilter]);
 
+  const draftCount = useMemo(
+    () => (data?.messages ?? []).filter((m) => m.is_draft).length,
+    [data?.messages],
+  );
+
   function handleCreated() {
+    refresh();
+  }
+
+  function handleDraftAction(t) {
+    setToast(t);
+    setTimeout(() => setToast(null), 3500);
     refresh();
   }
 
   return (
     <div className="h-full overflow-auto bg-slate-50/30">
+      {toast && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`fixed top-6 right-6 z-50 px-4 py-2.5 rounded-2xl shadow-lg text-[12px] font-extrabold ${
+            toast.ok ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+          }`}
+        >
+          {toast.msg}
+        </motion.div>
+      )}
       <div className="max-w-6xl mx-auto px-8 py-12 w-full">
         <div className="flex flex-col gap-10 mb-14">
           <div className="flex flex-wrap items-start justify-between gap-6">
@@ -502,6 +609,15 @@ export default function MessagesPage() {
                     <span className="text-slate-400 text-xs font-medium">
                       Gelen {data.stats.inbound_total} · Giden {data.stats.outbound_total}
                     </span>
+                    {draftCount > 0 && (
+                      <>
+                        <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                        <span className="inline-flex items-center gap-1 text-amber-700 font-bold text-xs">
+                          <Sparkles className="w-3 h-3" />
+                          {draftCount} AI taslak onay bekliyor
+                        </span>
+                      </>
+                    )}
                   </>
                 ) : (
                   "Yükleniyor…"
@@ -565,7 +681,13 @@ export default function MessagesPage() {
             ))
           ) : filtered.length > 0 ? (
             filtered.map((msg, i) => (
-              <MessageCard key={msg.id} msg={msg} onMarkRead={markAsRead} index={i} />
+              <MessageCard
+                key={msg.id}
+                msg={msg}
+                onMarkRead={markAsRead}
+                onDraftAction={handleDraftAction}
+                index={i}
+              />
             ))
           ) : (
             <div className="text-center py-32 bg-white border border-slate-200 rounded-[40px] shadow-sm">

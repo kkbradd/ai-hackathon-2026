@@ -134,6 +134,16 @@ export async function markMessageAsRead(messageId) {
   return res.data;
 }
 
+export async function sendDraftMessage(messageId) {
+  const res = await api.post(`/messages/${messageId}/send`);
+  return res.data;
+}
+
+export async function cancelDraftMessage(messageId) {
+  const res = await api.post(`/messages/${messageId}/cancel`);
+  return res.data;
+}
+
 export async function fetchMessageCategories() {
   const res = await api.get("/messages/categories");
   return res.data;
@@ -163,6 +173,23 @@ export async function dismissInsight(insightId) {
 
 export async function fetchAgentStatus() {
   const res = await api.get("/insights/agent-status");
+  return res.data;
+}
+
+// ── Supplier Drafts ───────────────────────────────────────────────────────────
+export async function fetchSupplierDrafts(status = null) {
+  const params = status ? `?status=${status}` : "";
+  const res = await api.get(`/supplier-drafts${params}`);
+  return res.data;
+}
+
+export async function sendSupplierDraft(draftId) {
+  const res = await api.post(`/supplier-drafts/${draftId}/send`);
+  return res.data;
+}
+
+export async function cancelSupplierDraft(draftId) {
+  const res = await api.post(`/supplier-drafts/${draftId}/cancel`);
   return res.data;
 }
 

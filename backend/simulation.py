@@ -523,6 +523,46 @@ def _trigger_delayed_shipment(db, target_id):
         related_entity_id=shipment.id,
     ))
 
+    # AI ile müşteri bildirim taslağı oluştur (gönderim manuel onaylanmalı)
+    try:
+        from email_drafter import draft_delay_notification
+        order = db.query(Order).filter(Order.id == shipment.order_id).first()
+        if order and order.customer:
+            already_drafted = (
+                db.query(CustomerMessage)
+                .filter(
+                    CustomerMessage.related_shipment_id == shipment.id,
+                    CustomerMessage.direction == "outbound",
+                    CustomerMessage.is_draft == True,
+                )
+                .first()
+            )
+            if not already_drafted:
+                draft = draft_delay_notification(
+                    customer_name=order.customer.name,
+                    tracking_number=shipment.tracking_number,
+                    carrier=shipment.carrier,
+                    days_overdue=2,
+                    order_id=order.id,
+                )
+                db.add(CustomerMessage(
+                    customer_id=order.customer_id,
+                    direction="outbound",
+                    subject=draft["subject"],
+                    body=draft["body"],
+                    created_at=datetime.utcnow(),
+                    is_read=True,
+                    ai_generated=True,
+                    is_draft=True,
+                    category="teslimat_gecikmesi",
+                    urgency="yüksek",
+                    ai_summary=f"AI tarafından üretilmiş gecikme bildirimi taslağı (Sipariş #{order.id}).",
+                    related_order_id=order.id,
+                    related_shipment_id=shipment.id,
+                ))
+    except Exception as e:
+        print(f"[simulation] Gecikme bildirimi taslağı üretilemedi: {e}")
+
 
 def _trigger_stock_drop(db, target_id):
     if target_id:

@@ -333,6 +333,8 @@ class CustomerMessageOut(BaseModel):
     ai_summary: Optional[str] = None
     related_order_id: Optional[int] = None
     related_shipment_id: Optional[int] = None
+    is_draft: bool = False
+    sent_at: Optional[str] = None
     model_config = {"from_attributes": True}
 
 
