@@ -182,10 +182,3 @@ GET  /docs                            — Swagger UI
 | Frontend | React 19, Vite, Tailwind CSS v4 |
 | Animasyon | Framer Motion |
 | Grafikler | Recharts |
-
----
-
-## Katkıda Bulunanlar
-
-- [kkbradd](https://github.com/kkbradd)
-- [Mervegulatly](https://github.com/Mervegulatly)
