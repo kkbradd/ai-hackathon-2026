@@ -176,6 +176,12 @@ export async function fetchAgentStatus() {
   return res.data;
 }
 
+// ── Daily Briefing ────────────────────────────────────────────────────────────
+export async function fetchDailyBriefing(refresh = false) {
+  const res = await api.get(`/daily-briefing${refresh ? "?refresh=true" : ""}`);
+  return res.data;
+}
+
 // ── Supplier Drafts ───────────────────────────────────────────────────────────
 export async function fetchSupplierDrafts(status = null) {
   const params = status ? `?status=${status}` : "";

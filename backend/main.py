@@ -17,7 +17,7 @@ from models import (  # noqa: F401
 from agents.orchestrator import AgentOrchestrator
 from routers import auth, chat, orders, shipments, dashboard
 from routers import inventory, operational_alerts, analytics, simulate, messages, customers
-from routers import insights, supplier_drafts
+from routers import insights, supplier_drafts, daily_briefing
 
 
 def _ensure_columns():
@@ -70,6 +70,7 @@ app.include_router(messages.router)
 app.include_router(customers.router)
 app.include_router(insights.router)
 app.include_router(supplier_drafts.router)
+app.include_router(daily_briefing.router)
 
 
 @app.get("/")

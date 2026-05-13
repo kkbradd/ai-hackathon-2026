@@ -9,6 +9,7 @@ import AnalyticsSection from "./AnalyticsSection";
 import AIInsightsSection from "./AIInsightsSection";
 import ActivityFeed from "./ActivityFeed";
 import SupplierDraftsPanel from "./SupplierDraftsPanel";
+import DailyBriefingCard from "./DailyBriefingCard";
 
 const SIMULATE_EVENTS = [
   { type: "new_order",        label: "Sipariş Ekle",    Icon: ShoppingCart,  color: "text-blue-600 bg-blue-50" },
@@ -100,8 +101,18 @@ export default function DashboardPanel() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-1">Operasyon Merkezi</h1>
-            <p className="text-[12px] font-medium text-slate-400">
-              Tarım ve Gıda Kooperatifi · {new Date().toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            <p className="text-[12px] font-medium text-slate-400 flex items-center gap-2 flex-wrap">
+              <span>Tarım ve Gıda Kooperatifi</span>
+              <span className="w-1 h-1 rounded-full bg-slate-300" />
+              <span>{new Date().toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span>
+              <span className="w-1 h-1 rounded-full bg-slate-300" />
+              <span className="inline-flex items-center gap-1 text-emerald-600 font-bold">
+                <span className="relative flex w-1.5 h-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </span>
+                4 AI ajanı canlı
+              </span>
             </p>
           </div>
           <SimulateButton onEvent={refresh} />
@@ -114,32 +125,35 @@ export default function DashboardPanel() {
           </div>
         )}
 
-        {/* Zone 2 — KPIs */}
+        {/* Zone 2 — Sabah brifingi (rol-bazlı, AI özetli) */}
+        <DailyBriefingCard />
+
+        {/* Zone 3 — KPIs */}
         <KpiGrid data={data} loading={loading} />
 
-        {/* Bugünkü mesajlar */}
+        {/* Zone 4 — AI aksiyon: tedarikçi e-posta taslakları (sadece pending varsa görünür) */}
+        <SupplierDraftsPanel />
+
+        {/* Zone 5 — Bugünkü mesajlar */}
         <TodayMessagesCard data={data} loading={loading} />
 
-        {/* Zone 3 — Analytics */}
-        <AnalyticsSection
-          data={data}
-          loading={loading}
-          weeksAgo={weeksAgo}
-          setWeeksAgo={setWeeksAgo}
-        />
-
-        {/* Zone 3.5 — Supplier email drafts (AI üretimli, kullanıcı onayıyla iletilir) */}
-        <div className="pt-10 border-t border-slate-100/80 mt-12">
-          <SupplierDraftsPanel />
+        {/* Zone 6 — Analytics */}
+        <div className="pt-8 mt-2 border-t border-slate-100">
+          <AnalyticsSection
+            data={data}
+            loading={loading}
+            weeksAgo={weeksAgo}
+            setWeeksAgo={setWeeksAgo}
+          />
         </div>
 
-        {/* Zone 4 — AI Insights + Alerts */}
-        <div className="pt-10 border-t border-slate-100/80 mt-12">
+        {/* Zone 7 — AI Insights + Alerts */}
+        <div className="pt-8 mt-2 border-t border-slate-100">
           <AIInsightsSection loading={loading} />
         </div>
 
-        {/* Zone 5 — Activity Feed (başlık kartlara yakın) */}
-        <div className="pt-14 border-t border-slate-100/80 mt-4">
+        {/* Zone 8 — Activity Feed */}
+        <div className="pt-8 mt-2 border-t border-slate-100">
           <ActivityFeed data={data} loading={loading} />
         </div>
 

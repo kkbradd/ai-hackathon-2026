@@ -209,8 +209,15 @@ export default function SupplierDraftsPanel() {
     refresh();
   }
 
+  // Hiç draft yoksa minik bir "her şey yolunda" chip'i göster (kayıp olmayalım)
   if (!loading && drafts.length === 0) {
-    return null;  // hiç draft yoksa dashboard'da yer kaplama
+    return (
+      <div className="flex items-center gap-2 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-fit">
+        <Sparkles className="w-3 h-3" />
+        AI tedarikçi taslakları: şu an onay bekleyen yok
+        <CheckCircle className="w-3 h-3 ml-1" />
+      </div>
+    );
   }
 
   return (

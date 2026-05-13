@@ -18,3 +18,6 @@ backend/crew/
 # OS
 .DS_Store
 .history/
+
+# Academic — repo dışı
+gereksinim.md
