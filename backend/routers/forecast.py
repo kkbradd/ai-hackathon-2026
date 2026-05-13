@@ -203,39 +203,75 @@ def _ai_summary(
         for p in top
     )
 
-    fallback_lines = []
-    fallback_lines.append(
-        f"Önümüzdeki 7 gün için tahmini ciro ₺{kpi_revenue:,.0f} ve yaklaşık "
-        f"{kpi_orders} sipariş bekleniyor."
+    # 3-paragraf fallback (Gemini quota tükendiğinde de demo akıyor)
+    daily_avg = kpi_revenue / 7.0 if kpi_revenue else 0
+    p1 = (
+        f"Önümüzdeki yedi günde toplam ₺{kpi_revenue:,.0f} ciro ve yaklaşık {kpi_orders} sipariş "
+        f"bekliyoruz; günlük ortalama ₺{daily_avg:,.0f} bandında bir akış öngörülüyor. "
+        f"Genel gidişat son iki haftadaki ortalamaya yakın seyrediyor, ciddi bir yön değişikliği "
+        f"sinyali yok. Operasyonel kapasitenin bu hacmi rahatlıkla karşılayacağını düşünüyoruz, "
+        f"yine de günlük dalgalanmalara karşı ekibin esnek olması önemli."
     )
+
     risk_products = [p for p in top if p.stock_status in ("uyari", "kritik")]
-    if risk_products:
-        risk_names = ", ".join(p.name for p in risk_products[:3])
-        fallback_lines.append(
-            f"Stok yenileme öncelikli ürünler: {risk_names}. "
-            f"Toplam {at_risk} üründe tahmini talep mevcut stoğu aşıyor."
+    critical = [p for p in top if p.stock_status == "kritik"]
+    if critical:
+        names = ", ".join(p.name for p in critical[:3])
+        p2 = (
+            f"Stok tarafında en acil sıkıntı {names} ürünlerinde görünüyor — burada mevcut stok "
+            f"yedi günlük tahmini talebi karşılayamayacak ve hafta ortasında raf boşluğu riski var. "
+            f"Toplamda {at_risk} ürünün talebi stoğu aşıyor; bu ürünlerin tedarikçi siparişlerinin "
+            f"bu hafta içinde verilmesi gerekiyor. Aksi halde aktif siparişlerde ertelenme ve "
+            f"müşteri memnuniyetinde düşüş yaşanabilir."
+        )
+    elif risk_products:
+        names = ", ".join(p.name for p in risk_products[:3])
+        p2 = (
+            f"Stok tarafında {names} ürünleri uyarı seviyesinde — bu üç kalemde tahmini talep "
+            f"mevcut stoğun yarısından fazlasını yiyecek. Toplam {at_risk} üründe risk var, "
+            f"bunların tedarikçi siparişlerini önümüzdeki birkaç güne yaymak rahatlatacaktır. "
+            f"Kritik bir aciliyet yok ama proaktif planlama bu hafta operasyonu güvende tutacak."
         )
     else:
-        fallback_lines.append(
-            "Top 5 üründe stok seviyeleri 7 günlük talebi karşılıyor görünüyor; "
-            f"yine de genelde {at_risk} ürün risk altında."
+        p2 = (
+            f"Stok tarafında öne çıkan beş üründe seviyeler yedi günlük talebi rahatlıkla "
+            f"karşılıyor görünüyor; acil bir tedarikçi siparişi gerekmiyor. Yine de genel "
+            f"katalogda {at_risk} ürün risk altında — bunların büyük çoğunluğu daha küçük hacimli "
+            f"kalemler. Haftalık stok turunda bu ürünleri gözden geçirmek yeterli olacaktır."
         )
-    fallback_lines.append(
-        f"En çok satması beklenen ürün {top[0].name} — bu üründe arz sürekliliğini koruyun."
+
+    leader = top[0]
+    p3 = (
+        f"En çok satması beklenen ürün {leader.name}; son otuz günde {leader.sales_30d:g} {leader.unit or 'birim'} "
+        f"satışla zirvede ve önümüzdeki yedi günde de yaklaşık {leader.forecast_7d:g} {leader.unit or 'birim'} "
+        f"talep bekleniyor. Bu üründe arz sürekliliğini özellikle korumak ve ek paketleme "
+        f"kapasitesi ayırmak önerilir. Trendin bu kadar net olması, bu ürün için "
+        f"hafta sonu mini bir kampanya ya da özel paket teklifi denemenin de uygun bir an "
+        f"olduğunu düşündürüyor."
     )
-    fallback = " ".join(fallback_lines)
+
+    fallback = "\n\n".join([p1, p2, p3])
 
     prompt = (
-        "Sen bir tarım kooperatifinin operasyon analistisin. Aşağıdaki 7 günlük "
-        "talep tahminine bakarak 2-3 paragraf, akıcı bir Türkçe analiz yaz. "
-        "Vurgu noktaları: (1) genel gidişat ve ciro beklentisi, (2) stok yenileme "
-        "gereken ürünler ve aciliyet, (3) öne çıkan trend ürün. Madde işareti veya "
-        "başlık kullanma; düz paragraflar yaz. Rakamları kısa tut.\n\n"
-        f"7 günlük tahmin: ciro ₺{kpi_revenue:,.0f}, sipariş ~{kpi_orders}, "
-        f"risk altında {at_risk} ürün.\n\n"
-        f"En çok satması beklenen 5 ürün:\n{top_lines}"
+        "Sen bir tarım kooperatifinin kıdemli operasyon analistisin. Aşağıdaki 7 günlük "
+        "talep tahminine bakarak yöneticiye sunulacak Türkçe bir analiz yaz.\n\n"
+        "FORMAT KURALLARI:\n"
+        "- TAM 3 paragraf yaz, her biri 3-4 cümle olsun\n"
+        "- Madde işareti, başlık veya numaralandırma KULLANMA\n"
+        "- Düz akıcı Türkçe iş dilinde yaz, jargon yok\n"
+        "- Rakamları seyrek kullan, vurgu yapacaksan parlak rakamı seç\n\n"
+        "İÇERİK YAPISI:\n"
+        "1. PARAGRAF: Genel gidişat — ciro beklentisi, geçen döneme kıyasla yön, momentum yorumu\n"
+        "2. PARAGRAF: Stok riski — hangi ürünlerde sıkıntı çıkacak, neden öncelikli, ne yapılmalı\n"
+        "3. PARAGRAF: Trend ürün — en çok satması beklenenin satış sürekliliği için öneri, "
+        "fırsat görüldüğü olası kampanya ya da pazarlama notu\n\n"
+        f"VERİ — 7 günlük tahmin:\n"
+        f"- Tahmini ciro: ₺{kpi_revenue:,.0f}\n"
+        f"- Tahmini sipariş: ~{kpi_orders}\n"
+        f"- Stoğu yetmeyebilecek ürün adedi: {at_risk}\n\n"
+        f"EN ÇOK SATMASI BEKLENEN 5 ÜRÜN:\n{top_lines}"
     )
-    return _gemini_text(prompt, max_tokens=520) or fallback
+    return _gemini_text(prompt, max_tokens=900) or fallback
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────

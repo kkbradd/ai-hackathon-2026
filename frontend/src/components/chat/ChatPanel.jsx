@@ -287,15 +287,10 @@ export default function ChatPanel() {
       </div>
 
       {/* ── Input bar ── */}
-      <div className="shrink-0 border-t border-slate-100 bg-white py-4 px-6 relative">
+      <div className="shrink-0 border-t border-slate-100 bg-white py-4 px-6 flex justify-center">
         <div
-          className="flex flex-col gap-2.5"
-          style={{
-            width: "min(640px, calc(100vw - 48px))",
-            position: "relative",
-            left: "50vw",
-            transform: "translateX(-50%)",
-          }}
+          className="flex flex-col gap-2.5 w-full"
+          style={{ maxWidth: "640px" }}
         >
 
           {/* Suggestion chips — only when chat is active */}

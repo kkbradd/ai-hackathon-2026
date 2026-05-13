@@ -35,7 +35,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* Left panel — value proposition (lg+ only) */}
-      <div className="hidden lg:flex flex-col justify-between px-16 py-14 bg-slate-950 relative overflow-hidden">
+      <div className="hidden lg:flex flex-col items-center justify-center px-12 py-12 bg-slate-950 relative overflow-hidden">
         {/* Atmospheric orbs — Harman yellow-green palette */}
         <div className="absolute -top-32 -left-20 w-[28rem] h-[28rem] bg-yellow-500/[0.10] rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute top-1/3 -right-20 w-96 h-96 bg-emerald-600/[0.10] rounded-full blur-[120px] pointer-events-none" />
@@ -46,61 +46,58 @@ export default function LoginPage() {
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "32px 32px" }}
         />
 
-        {/* Top — Brand */}
-        <div className="relative z-10 flex items-center gap-3">
-          <img src="/harman-logo.png" alt="Harman" className="w-11 h-11 rounded-xl object-cover shadow-lg ring-1 ring-white/10" />
+        {/* Brand — absolute top-left */}
+        <div className="absolute top-10 left-12 z-10 flex items-center gap-3">
+          <img src="/harman-logo.png" alt="Harman" className="w-10 h-10 rounded-xl object-cover shadow-lg ring-1 ring-white/10" />
           <div>
-            <p className="text-[18px] font-black text-white tracking-tight leading-none">Harman</p>
-            <p className="text-[10px] font-bold text-yellow-500/90 tracking-[0.22em] uppercase mt-1">Tarım Ops · AI</p>
+            <p className="text-[16px] font-black text-white tracking-tight leading-none">Harman</p>
+            <p className="text-[9.5px] font-bold text-yellow-500/90 tracking-[0.22em] uppercase mt-1">Tarım Ops · AI</p>
           </div>
         </div>
 
-        {/* Middle — Headline + features */}
-        <div className="relative z-10 max-w-md">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-[10.5px] font-bold tracking-[0.18em] text-yellow-300 uppercase mb-6">
-              <Sparkles className="w-3 h-3" />
-              Gemini · Groq destekli
+        {/* Centered hero block */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="relative z-10 w-full flex flex-col items-center text-center"
+          style={{ maxWidth: "560px" }}
+        >
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-[10.5px] font-bold tracking-[0.18em] text-yellow-300 uppercase mb-6">
+            <Sparkles className="w-3 h-3" />
+            Gemini · Groq destekli
+          </span>
+          <h1 className="text-[46px] font-black text-white tracking-tight leading-[1.05]">
+            Kooperatifin için{" "}
+            <span className="bg-gradient-to-r from-yellow-300 via-amber-300 to-emerald-300 bg-clip-text text-transparent">
+              otonom operasyon.
             </span>
-            <h1 className="text-[44px] font-black text-white tracking-tight leading-[1.05]">
-              Kooperatifin için
-              <br />
-              <span className="bg-gradient-to-r from-yellow-300 via-amber-300 to-emerald-300 bg-clip-text text-transparent">
-                otonom operasyon.
-              </span>
-            </h1>
-            <p className="text-[15px] text-slate-400 mt-5 leading-relaxed">
-              Siparişlerden kargoya, stoktan müşteri mesajına — tüm operasyonu tek panelde yönet, AI ajanları arka planda çalıştır.
-            </p>
-          </motion.div>
+          </h1>
+          <p className="text-[15px] text-slate-400 mt-5 leading-relaxed max-w-md">
+            Siparişlerden kargoya, stoktan müşteri mesajına — tüm operasyonu tek panelde yönet, AI ajanları arka planda çalıştır.
+          </p>
 
-          <div className="mt-10 space-y-3">
+          <div className="mt-10 grid grid-cols-3 gap-3 w-full">
             {FEATURES.map(({ Icon, title, text }, i) => (
               <motion.div
                 key={title}
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.25 + i * 0.1, ease: [0.16, 1, 0.3, 1] }}
-                className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors"
+                className="flex flex-col items-center text-center gap-2 p-4 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors"
               >
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-yellow-500/20 to-emerald-600/20 border border-yellow-500/15 flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500/20 to-emerald-600/20 border border-yellow-500/15 flex items-center justify-center shrink-0">
                   <Icon className="w-4 h-4 text-yellow-300" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-white leading-tight">{title}</p>
-                  <p className="text-[12px] text-slate-400 leading-snug mt-0.5">{text}</p>
-                </div>
+                <p className="text-[12.5px] font-bold text-white leading-tight">{title}</p>
+                <p className="text-[10.5px] text-slate-400 leading-snug">{text}</p>
               </motion.div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
-        {/* Bottom — Footer line */}
-        <div className="relative z-10 flex items-center justify-between text-[11px] font-medium text-slate-500">
+        {/* Footer — absolute bottom row */}
+        <div className="absolute bottom-8 left-12 right-12 z-10 flex items-center justify-between text-[11px] font-medium text-slate-500">
           <span className="inline-flex items-center gap-2">
             <span className="relative flex w-1.5 h-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />

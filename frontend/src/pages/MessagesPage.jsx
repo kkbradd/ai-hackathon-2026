@@ -622,7 +622,7 @@ export default function MessagesPage() {
           {toast.msg}
         </motion.div>
       )}
-      <div className="max-w-6xl mx-auto px-8 py-12 w-full">
+      <div className="px-6 sm:px-8 py-8 w-full">
         <div className="flex flex-col gap-10 mb-14">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div className="flex items-start gap-4">

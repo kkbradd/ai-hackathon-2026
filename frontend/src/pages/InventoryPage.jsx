@@ -186,7 +186,7 @@ export default function InventoryPage() {
 
   return (
     <div className="h-full overflow-auto bg-slate-50/30">
-      <div className="max-w-6xl mx-auto px-8 py-10">
+      <div className="px-6 sm:px-8 py-8">
 
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-8 mb-14">

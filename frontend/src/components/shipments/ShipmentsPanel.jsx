@@ -76,7 +76,7 @@ export default function ShipmentsPanel() {
   }
 
   return (
-    <div className="flex h-full bg-transparent overflow-hidden">
+    <div className="relative flex h-full bg-transparent overflow-hidden">
       {/* Left: list */}
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         {/* Header */}
@@ -211,16 +211,16 @@ export default function ShipmentsPanel() {
         )}
       </div>
 
-      {/* Right: detail slide-over */}
+      {/* Right: detail slide-over (absolute overlay — list reflow yapmasın) */}
       <AnimatePresence>
         {(selected || detailLoading) && (
           <motion.div
             key={selected?.id ?? "loading"}
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
-            transition={{ type: "spring", stiffness: 350, damping: 38 }}
-            className="w-[480px] bg-slate-50 border-l border-slate-200 flex flex-col overflow-hidden shrink-0 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-30"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "tween", duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+            className="absolute top-0 right-0 bottom-0 w-[480px] max-w-[90%] bg-slate-50 border-l border-slate-200 flex flex-col overflow-hidden shadow-[-12px_0_30px_-8px_rgba(0,0,0,0.12)] z-30"
           >
             {detailLoading ? (
               <div className="flex items-center justify-center h-full">
