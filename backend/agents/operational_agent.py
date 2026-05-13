@@ -2,23 +2,26 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import text
 
-from agents.gemini_client import call_gemini_for_insight as call_groq_for_insight, parse_insight_lines, write_insights
+from agents.gemini_client import call_gemini_for_insight as call_groq_for_insight, parse_insight_lines, write_insights, _context_hash
 from database import SessionLocal
 
-SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Operasyon Zekâ Ajanısın.
-Sana verilen güncel operasyonel verileri analiz et ve 3 içgörü üret.
+SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Günlük Operasyon Analisti'sin.
+Sana verilen BUGÜNE AİT operasyonel verileri analiz et ve tam olarak 3 içgörü üret.
+
+ODAK: BUGÜN ne oldu? Hangi riskler şu an aktif? Hangi olaylar acil müdahale gerektiriyor?
+Genel trend değil, BUGÜNE özgü somut tespitler yap. Sayıları, ürün adlarını, taşıyıcı adlarını kullan.
 
 ÇIKTI KURALLARI — KESİNLİKLE UY:
 - Her satır tam olarak şu formatta olmalı: SEVERITY|TYPE|CONTENT
 - SEVERITY değerleri: critical, warning, info, positive (küçük harf)
 - TYPE değerleri: summary, alert, recommendation, anomaly (küçük harf)
-- CONTENT: Türkçe, tam ve anlamlı bir cümle. "CONTENT:" yazma, sadece cümleyi yaz.
-- Başka hiçbir şey yazma: açıklama, başlık, tire, yıldız, numara yok.
+- CONTENT: Türkçe, tam ve anlamlı bir cümle (en az 15 kelime). Asla yarım bırakma.
+- "CONTENT:" yazma, sadece cümleyi yaz. Tire, yıldız, numara yok.
 
 ÖRNEK (bu formatı birebir kullan):
-critical|alert|5 kargo tahmini teslimat tarihini geçti, müşterilere acil bilgilendirme yapılmalı.
-warning|recommendation|Zeytinyağı stoğu kritik seviyeye yaklaşıyor, bu hafta içinde tedarik siparişi verilmeli.
-positive|summary|Bugün 12 sipariş başarıyla teslim edildi ve müşteri memnuniyeti yüksek seyrediyor."""
+critical|alert|Bugün 5 kargo tahmini teslimat tarihini geçti, en kritik gecikme Yıldız Kargo'da 8 saatlik.
+warning|recommendation|Zeytinyağı stoğu minimum eşiğin yüzde 40'ına düştü, bu hafta içinde acil tedarik siparişi verilmeli.
+positive|summary|Bugün alınan 18 sipariş dünün iki katı, ciro hedefin üzerinde seyrediyor."""
 
 
 def _build_context(db) -> str:
@@ -115,13 +118,15 @@ def run_operational_agent() -> None:
     db = SessionLocal()
     try:
         context = _build_context(db)
+        chash = _context_hash(context)
         raw = call_groq_for_insight(SYSTEM_PROMPT, context, max_tokens=250)
         if not raw:
             return
         insights = parse_insight_lines(raw)
-        write_insights(db, insights, "operational")
+        added = write_insights(db, insights, "operational", context_hash=chash)
         db.commit()
-        print(f"[Agent:operational] {len(insights)} içgörü yazıldı.")
+        if added:
+            print(f"[Agent:operational] {added} yeni içgörü eklendi.")
     except Exception as e:
         db.rollback()
         print(f"[Agent:operational] Hata: {e}")

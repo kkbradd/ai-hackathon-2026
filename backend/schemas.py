@@ -270,7 +270,26 @@ class InboundMessageDigest(BaseModel):
     customer_name: str
     related_order_id: Optional[int]
     category: Optional[str]
+    urgency: Optional[str] = None
+    ai_summary: Optional[str] = None
     created_at: str
+
+
+class TodayDelayedShipment(BaseModel):
+    tracking_number: str
+    carrier: str
+    recipient_name: Optional[str]
+    estimated_delivery: Optional[str]
+    hours_late: int
+    last_status: Optional[str]
+
+
+class TodayStockAlert(BaseModel):
+    name: str
+    category: str
+    quantity_kg: float
+    min_threshold: float
+    pct: int
 
 
 class AIInsightOut(BaseModel):
@@ -314,6 +333,8 @@ class DashboardResponse(BaseModel):
     recent_alerts: List[OperationalAlertOut]
     inbound_messages_today_count: int
     inbound_messages_today: List[InboundMessageDigest]
+    today_delayed_shipments: List[TodayDelayedShipment]
+    today_stock_alerts: List[TodayStockAlert]
 
 
 # ── Customer Messages ─────────────────────────────────────────────────────────

@@ -2,23 +2,26 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import text
 
-from agents.gemini_client import call_gemini_for_insight as call_groq_for_insight, parse_insight_lines, write_insights
+from agents.gemini_client import call_gemini_for_insight as call_groq_for_insight, parse_insight_lines, write_insights, _context_hash
 from database import SessionLocal
 
-SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Müşteri İletişim Ajanısın.
-Sana verilen müşteri mesajı verilerini analiz et ve 3 öncelik/müdahale içgörüsü üret.
+SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Müşteri Deneyimi Analisti'sin.
+Sana verilen BUGÜNKÜ müşteri mesajı verilerini analiz et ve tam olarak 3 içgörü üret.
+
+ODAK: Bugün hangi müşteriler acil sorun bildirdi? Hangi kategoride yoğunluk var?
+Okunmamış yüksek öncelikli mesajlar kimlerden geldi? Somut isimler ve kategorilerle konuş.
 
 ÇIKTI KURALLARI — KESİNLİKLE UY:
 - Her satır tam olarak şu formatta olmalı: SEVERITY|TYPE|CONTENT
 - SEVERITY değerleri: critical, warning, info, positive (küçük harf)
 - TYPE değerleri: summary, alert, recommendation, anomaly (küçük harf)
-- CONTENT: Türkçe, tam ve anlamlı bir cümle. "CONTENT:" yazma, sadece cümleyi yaz.
-- Başka hiçbir şey yazma: açıklama, başlık, tire, yıldız, numara yok.
+- CONTENT: Türkçe, tam ve anlamlı bir cümle (en az 15 kelime). Asla yarım bırakma.
+- "CONTENT:" yazma, sadece cümleyi yaz. Tire, yıldız, numara yok.
 
 ÖRNEK (bu formatı birebir kullan):
-critical|alert|3 okunmamış yüksek öncelikli teslimat gecikmesi şikayeti var, müşterilere bugün geri dönülmeli.
-warning|recommendation|Bu hafta stok talebi mesajları artış gösterdi, envanter ekibiyle koordinasyon sağlanmalı.
-info|summary|Bugün 8 müşteri mesajı alındı, çoğunluğu teslimat durumu sorgusundan oluşuyor."""
+critical|alert|Bugün 3 okunmamış yüksek öncelikli teslimat gecikmesi şikayeti var, müşterilere bugün içinde geri dönülmeli.
+warning|recommendation|Bu hafta stok talebi mesajları yüzde 40 arttı, envanter ekibiyle acil koordinasyon sağlanması öneriliyor.
+info|summary|Bugün toplam 8 müşteri mesajı alındı, büyük çoğunluğu teslimat durum sorgusu niteliğinde."""
 
 CATEGORY_LABELS = {
     "teslimat_gecikmesi": "Teslimat Gecikmesi",
@@ -104,19 +107,46 @@ Acil Okunmamış Mesajlar:
 """.strip()
 
 
+HIGH_PRIORITY_KEYWORDS = (
+    "teslimat gecikmesi", "teslimat gecik", "gecikmesi", "yanlış ürün", "yanliş ürün",
+    "teslim edilmedi", "gelmedi", "acil",
+)
+WARNING_KEYWORDS = (
+    "sipariş", "fatura", "stok",
+)
+
+
+def _adjust_severity(insights: list[dict], context: str) -> list[dict]:
+    """Bump severity based on whether high-priority categories dominate today's messages."""
+    context_lower = context.lower()
+    has_critical = any(kw in context_lower for kw in HIGH_PRIORITY_KEYWORDS)
+    for insight in insights:
+        content_lower = insight["content"].lower()
+        if any(kw in content_lower for kw in HIGH_PRIORITY_KEYWORDS):
+            insight["severity"] = "critical"
+        elif has_critical and insight["severity"] == "info":
+            insight["severity"] = "warning"
+        elif any(kw in content_lower for kw in WARNING_KEYWORDS) and insight["severity"] == "info":
+            insight["severity"] = "warning"
+    return insights
+
+
 def run_customer_issue_agent() -> None:
     db = SessionLocal()
     try:
         context = _build_context(db)
+        chash = _context_hash(context)
         raw = call_groq_for_insight(SYSTEM_PROMPT, context, max_tokens=250)
         if not raw:
             return
         insights = parse_insight_lines(raw)
+        insights = _adjust_severity(insights, context)
         for insight in insights:
             insight["entity_type"] = "message"
-        write_insights(db, insights, "customer_issue")
+        added = write_insights(db, insights, "customer_issue", context_hash=chash)
         db.commit()
-        print(f"[Agent:customer_issue] {len(insights)} içgörü yazıldı.")
+        if added:
+            print(f"[Agent:customer_issue] {added} yeni içgörü eklendi.")
     except Exception as e:
         db.rollback()
         print(f"[Agent:customer_issue] Hata: {e}")

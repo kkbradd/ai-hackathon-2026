@@ -43,6 +43,8 @@ from schemas import (
     WeeklyChartData,
     InboundMessageDigest,
     AIInsightOut,
+    TodayDelayedShipment,
+    TodayStockAlert,
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -225,32 +227,22 @@ def get_dashboard(
             revenue=round(float(row.revenue or 0.0), 2) if row else 0.0,
         ))
 
-    # Dashboard'da sadece operasyonel kategoriler gösterilir (genel_destek hariç)
-    OPERATIONAL_CATEGORIES = (
-        "teslimat_gecikmesi", "yanlis_urun",
-    )
-    cat_placeholder = ",".join(f"'{c}'" for c in OPERATIONAL_CATEGORIES)
-
     inbound_messages_today_count = db.execute(
-        text(f"""
+        text("""
             SELECT COUNT(*) FROM customer_messages
-            WHERE direction = 'inbound'
-              AND created_at >= :today
-              AND category IN ({cat_placeholder})
+            WHERE direction = 'inbound' AND created_at >= :today
         """),
         {"today": today_start},
     ).scalar() or 0
 
     msg_today_slice = db.execute(
-        text(f"""
+        text("""
             SELECT cm.id, cm.subject, c.name AS customer_name,
-                   cm.related_order_id, cm.category,
-                   cm.created_at
+                   cm.related_order_id, cm.category, cm.urgency,
+                   cm.ai_summary, cm.created_at
             FROM customer_messages cm
             JOIN customers c ON c.id = cm.customer_id
-            WHERE cm.direction = 'inbound'
-              AND cm.created_at >= :today
-              AND cm.category IN ({cat_placeholder})
+            WHERE cm.direction = 'inbound' AND cm.created_at >= :today
             ORDER BY
               CASE cm.urgency WHEN 'yüksek' THEN 0 WHEN 'orta' THEN 1 ELSE 2 END,
               cm.created_at DESC
@@ -265,9 +257,53 @@ def get_dashboard(
             customer_name=m.customer_name,
             related_order_id=m.related_order_id,
             category=m.category,
+            urgency=m.urgency,
+            ai_summary=m.ai_summary,
             created_at=datetime.strptime(str(m.created_at)[:16], "%Y-%m-%d %H:%M").strftime("%d.%m.%Y %H:%M"),
         )
         for m in msg_today_slice
+    ]
+
+    delayed_rows = db.execute(text("""
+        SELECT s.tracking_number, s.carrier, s.recipient_name,
+               s.estimated_delivery,
+               CAST((julianday(:now) - julianday(s.estimated_delivery)) * 24 AS INTEGER) AS hours_late,
+               (SELECT su.status FROM shipment_updates su
+                WHERE su.shipment_id = s.id ORDER BY su.timestamp DESC LIMIT 1) AS last_status
+        FROM shipments s
+        WHERE s.estimated_delivery IS NOT NULL
+          AND s.estimated_delivery < :now
+          AND s.status NOT IN ('delivered','failed','returned')
+        ORDER BY hours_late DESC LIMIT 8
+    """), {"now": now}).fetchall()
+    today_delayed_shipments = [
+        TodayDelayedShipment(
+            tracking_number=r.tracking_number,
+            carrier=r.carrier,
+            recipient_name=r.recipient_name,
+            estimated_delivery=str(r.estimated_delivery)[:16] if r.estimated_delivery else None,
+            hours_late=int(r.hours_late or 0),
+            last_status=r.last_status,
+        )
+        for r in delayed_rows
+    ]
+
+    stock_alert_rows = db.execute(text("""
+        SELECT p.name, p.category, i.quantity_kg, i.min_threshold,
+               CAST(ROUND((i.quantity_kg / NULLIF(i.min_threshold, 0)) * 100) AS INTEGER) AS pct
+        FROM inventory i JOIN products p ON p.id = i.product_id
+        WHERE i.quantity_kg < i.min_threshold
+        ORDER BY pct ASC LIMIT 5
+    """)).fetchall()
+    today_stock_alerts = [
+        TodayStockAlert(
+            name=r.name,
+            category=r.category,
+            quantity_kg=float(r.quantity_kg),
+            min_threshold=float(r.min_threshold),
+            pct=int(r.pct or 0),
+        )
+        for r in stock_alert_rows
     ]
 
     return DashboardResponse(
@@ -293,4 +329,6 @@ def get_dashboard(
         recent_alerts=recent_alerts,
         inbound_messages_today_count=inbound_messages_today_count,
         inbound_messages_today=inbound_messages_today,
+        today_delayed_shipments=today_delayed_shipments,
+        today_stock_alerts=today_stock_alerts,
     )

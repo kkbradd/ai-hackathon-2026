@@ -2,7 +2,6 @@ import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Zap,
   LayoutDashboard,
   MessageSquare,
   ClipboardList,
@@ -15,12 +14,12 @@ import {
 import { useAuth } from "../../store/authStore";
 
 const NAV_ITEMS = [
-  { to: "/",          icon: LayoutDashboard, label: "Genel Bakış",  color: "text-indigo-600" },
-  { to: "/chat",      icon: Bot,             label: "AI Asistan",   color: "text-violet-600" },
-  { to: "/orders",    icon: ClipboardList,   label: "Siparişler",   color: "text-amber-600"  },
-  { to: "/shipments", icon: Truck,           label: "Kargo Takip",  color: "text-blue-600"   },
-  { to: "/inventory", icon: Package,         label: "Envanter",     color: "text-emerald-600"},
-  { to: "/messages",  icon: MessageSquare,   label: "Mesajlar",     color: "text-rose-500"   },
+  { to: "/",          icon: LayoutDashboard, label: "Genel Bakış",  color: "text-yellow-700" },
+  { to: "/chat",      icon: Bot,             label: "AI Asistan",   color: "text-green-700"  },
+  { to: "/orders",    icon: ClipboardList,   label: "Siparişler",   color: "text-amber-700"  },
+  { to: "/shipments", icon: Truck,           label: "Kargo Takip",  color: "text-yellow-600" },
+  { to: "/inventory", icon: Package,         label: "Envanter",     color: "text-green-600"  },
+  { to: "/messages",  icon: MessageSquare,   label: "Mesajlar",     color: "text-amber-600"  },
 ];
 
 function NavItem({ to, icon: Icon, label, color, collapsed }) {
@@ -33,8 +32,8 @@ function NavItem({ to, icon: Icon, label, color, collapsed }) {
       title={label}
       className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 group ${
         isActive
-          ? "bg-indigo-600 text-white shadow-sm shadow-indigo-200"
-          : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          ? "bg-gradient-to-r from-yellow-600 to-green-700 text-white shadow-sm shadow-yellow-200"
+          : "text-slate-500 hover:bg-yellow-50 hover:text-slate-800"
       }`}
     >
       <Icon className={`w-[18px] h-[18px] shrink-0 ${isActive ? "text-white" : color}`} />
@@ -87,13 +86,13 @@ export default function Sidebar() {
     >
       {/* Logo zone */}
       <div className={`flex items-center gap-3 py-5 shrink-0 ${collapsed ? "px-4 justify-center" : "px-5"}`}>
-        <div
+        <img
+          src="/harman-logo.png"
+          alt="Harman"
           onClick={() => setCollapsed((c) => !c)}
-          className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-sm shadow-indigo-200 shrink-0 cursor-pointer hover:scale-105 transition-transform"
+          className="w-9 h-9 rounded-xl object-cover shadow-sm shrink-0 cursor-pointer hover:scale-105 transition-transform"
           title={collapsed ? "Genişlet" : "Daralt"}
-        >
-          <Zap className="w-4 h-4 text-white" />
-        </div>
+        />
         <AnimatePresence>
           {!collapsed && (
             <motion.div
@@ -103,11 +102,11 @@ export default function Sidebar() {
               transition={{ duration: 0.18 }}
               className="overflow-hidden"
             >
-              <p className="text-[15px] font-bold text-slate-900 tracking-tight whitespace-nowrap">
-                Kooperatif
+              <p className="text-[16px] font-black text-slate-900 tracking-tight whitespace-nowrap">
+                Harman
               </p>
-              <p className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase whitespace-nowrap">
-                AI Ops Hub
+              <p className="text-[10px] font-semibold text-yellow-600 tracking-widest uppercase whitespace-nowrap">
+                AI Ops
               </p>
             </motion.div>
           )}
@@ -136,7 +135,7 @@ export default function Sidebar() {
       <div className={`py-4 ${collapsed ? "px-2" : "px-3"}`}>
         {!collapsed ? (
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors mb-1">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center text-indigo-700 text-[11px] font-bold shrink-0 border border-indigo-100">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-100 to-green-100 flex items-center justify-center text-green-800 text-[11px] font-bold shrink-0 border border-green-100">
               {initials}
             </div>
             <div className="min-w-0 flex-1">
@@ -149,7 +148,7 @@ export default function Sidebar() {
             </div>
           </div>
         ) : (
-          <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center text-indigo-700 text-[11px] font-bold border border-indigo-100 mb-1">
+          <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-yellow-100 to-green-100 flex items-center justify-center text-green-800 text-[11px] font-bold border border-green-100 mb-1">
             {initials}
           </div>
         )}

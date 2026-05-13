@@ -2,42 +2,55 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import text
 
-from agents.gemini_client import call_gemini_for_insight as call_groq_for_insight, parse_insight_lines, write_insights
+from agents.gemini_client import call_gemini_for_insight as call_groq_for_insight, parse_insight_lines, write_insights, _context_hash
 from database import SessionLocal
 
-SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Envanter Analiz Ajanısın.
-Sana verilen stok ve tüketim verilerini analiz et ve 3 tedarik/envanter içgörüsü üret.
+SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Envanter ve Tedarik Analisti'sin.
+Sana verilen stok, tüketim ve sipariş talebini analiz et ve tam olarak 4 içgörü üret.
+
+İLK 3 IÇGÖRÜ — Stok durumu:
+ODAK: Hangi ürünler kritik stok altında? Hangileri sipariş önerisi gerektiriyor?
+KRİTİK etiketli ürünler gerçekten eşiğin altında. UYARI etiketliler ise min_threshold'un üstünde sadece sipariş önerisi.
+
+4. IÇGÖRÜ — Talep analizi (SON 10 GÜN):
+En çok sipariş edilen 3 ürünü belirt ve stok yenileme önerisi yap.
+Format: "Son 10 günde en çok sipariş edilen ürünler [A], [B] ve [C] oldu; stok yenilemeyi değerlendirin."
 
 ÇIKTI KURALLARI — KESİNLİKLE UY:
 - Her satır tam olarak şu formatta olmalı: SEVERITY|TYPE|CONTENT
 - SEVERITY değerleri: critical, warning, info, positive (küçük harf)
 - TYPE değerleri: summary, alert, recommendation, anomaly (küçük harf)
-- CONTENT: Türkçe, tam ve anlamlı bir cümle. "CONTENT:" yazma, sadece cümleyi yaz.
-- Başka hiçbir şey yazma: açıklama, başlık, tire, yıldız, numara yok.
+- CONTENT: Türkçe, tam ve anlamlı bir cümle (en az 15 kelime). Asla yarım bırakma.
+- "CONTENT:" yazma, sadece cümleyi yaz. Tire, yıldız, numara yok.
 
 ÖRNEK (bu formatı birebir kullan):
-critical|alert|Karabiber stoğu 2 günlük tüketime yetecek seviyede, bugün tedarik siparişi verilmeli.
-warning|recommendation|İsot ve Kırmızı Biber yeniden sipariş noktasının altına düştü, bu hafta temin edilmeli.
-info|summary|Zeytinyağı en yüksek tüketimli ürün olarak 14 günde 320 kg tüketildi."""
+critical|alert|Karabiber stoğu yalnızca 2 günlük tüketime yetecek 45 kg kaldı, bugün tedarik siparişi verilmesi zorunlu.
+warning|recommendation|İsot ve Kırmızı Biber yeniden sipariş noktasının altına düştü, bu hafta içinde temin edilmezse stok açığı oluşur.
+info|summary|Zeytinyağı son 14 günde 320 kg tükenerek en yüksek tüketimli ürün oldu, mevcut stok 18 güne yeterli.
+info|recommendation|Son 10 günde en çok sipariş edilen ürünler Biber Salçası, Kırmızı Biber ve İsot oldu; yoğun talebi karşılamak için stok yenilemeyi değerlendirin."""
 
 
 def _build_context(db) -> str:
     now = datetime.utcnow()
     cutoff_14d = now - timedelta(days=14)
+    cutoff_10d = now - timedelta(days=10)
 
-    below_reorder = db.execute(text("""
+    # Items BELOW min_threshold — truly critical, immediate action needed
+    critical_items = db.execute(text("""
         SELECT p.id, p.name, p.category, i.quantity_kg, i.min_threshold, i.reorder_point
         FROM inventory i JOIN products p ON p.id = i.product_id
-        WHERE i.quantity_kg < i.reorder_point
-        ORDER BY (i.quantity_kg / NULLIF(i.reorder_point, 0)) ASC
-        LIMIT 10
+        WHERE i.quantity_kg < i.min_threshold
+        ORDER BY (i.quantity_kg / NULLIF(i.min_threshold, 0)) ASC
+        LIMIT 5
     """)).fetchall()
 
-    critical_stock = db.execute(text("""
-        SELECT p.name, i.quantity_kg, i.min_threshold
+    # Items BELOW reorder_point but ABOVE min_threshold — warning/order recommendation only
+    warning_items = db.execute(text("""
+        SELECT p.id, p.name, p.category, i.quantity_kg, i.min_threshold, i.reorder_point
         FROM inventory i JOIN products p ON p.id = i.product_id
-        WHERE i.quantity_kg < i.min_threshold
-        ORDER BY i.quantity_kg ASC LIMIT 5
+        WHERE i.quantity_kg >= i.min_threshold AND i.quantity_kg < i.reorder_point
+        ORDER BY (i.quantity_kg / NULLIF(i.reorder_point, 0)) ASC
+        LIMIT 5
     """)).fetchall()
 
     consumption_rows = db.execute(text("""
@@ -51,44 +64,74 @@ def _build_context(db) -> str:
         ORDER BY consumed_14d DESC LIMIT 10
     """), {"cutoff": cutoff_14d}).fetchall()
 
+    # Top-3 most ordered products in last 10 days (by total quantity ordered)
+    top_demand = db.execute(text("""
+        SELECT p.name, p.category,
+               SUM(oi.quantity) AS total_ordered,
+               COUNT(DISTINCT oi.order_id) AS order_count
+        FROM order_items oi
+        JOIN products p ON p.id = oi.product_id
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.created_at >= :cutoff
+        GROUP BY p.id, p.name, p.category
+        ORDER BY total_ordered DESC
+        LIMIT 3
+    """), {"cutoff": cutoff_10d}).fetchall()
+
     total_products = db.execute(text("SELECT COUNT(*) FROM inventory")).scalar() or 0
     healthy = db.execute(text("""
         SELECT COUNT(*) FROM inventory WHERE quantity_kg >= reorder_point
     """)).scalar() or 0
 
-    reorder_str = ""
-    if below_reorder:
-        for r in below_reorder:
-            cons = next((c for c in consumption_rows if c.product_id == r.id), None)
-            avg_daily = round(cons.consumed_14d / max(cons.active_days, 1), 1) if cons else 0
-            days_left = round(r.quantity_kg / avg_daily) if avg_daily > 0 else 99
-            reorder_str += (
-                f"- {r.name} ({r.category}): {r.quantity_kg:.0f} kg mevcut, "
-                f"min={r.min_threshold:.0f} kg, günlük tüketim≈{avg_daily} kg, "
-                f"tahmini {days_left} gün yeterli\n"
-            )
-    else:
-        reorder_str = "Yeniden sipariş gerektiren ürün yok.\n"
+    def fmt_item(r, threshold_field):
+        cons = next((c for c in consumption_rows if c.product_id == r.id), None)
+        avg_daily = round(cons.consumed_14d / max(cons.active_days, 1), 1) if cons and cons.active_days else 0
+        days_left = round(r.quantity_kg / avg_daily) if avg_daily > 0 else "?"
+        threshold = r.min_threshold if threshold_field == "min" else r.reorder_point
+        return (
+            f"- {r.name} ({r.category}): {r.quantity_kg:.0f} kg mevcut, "
+            f"eşik={threshold:.0f} kg, günlük tüketim≈{avg_daily} kg, "
+            f"tahmini {days_left} gün yeterli"
+        )
 
-    critical_str = ", ".join(f"{r.name} ({r.quantity_kg:.0f} kg)" for r in critical_stock) or "yok"
+    if critical_items:
+        critical_str = "\n".join(fmt_item(r, "min") for r in critical_items)
+    else:
+        critical_str = "Kritik stok altında ürün yok."
+
+    if warning_items:
+        warning_str = "\n".join(fmt_item(r, "reorder") for r in warning_items)
+    else:
+        warning_str = "Yeniden sipariş önerisi gerektiren ürün yok."
 
     consumption_str = "\n".join(
         f"- {r.name}: 14 günde {r.consumed_14d:.0f} kg tüketildi"
         for r in consumption_rows[:5]
     ) or "Tüketim verisi yok."
 
+    top_demand_str = "\n".join(
+        f"- {r.name} ({r.category}): {r.total_ordered:.0f} birim, {r.order_count} siparişte"
+        for r in top_demand
+    ) or "Sipariş verisi yok."
+
     return f"""
 Envanter Analizi ({now.strftime('%d.%m.%Y %H:%M')}):
 
-Toplam ürün: {total_products}, sağlıklı stok: {healthy}, yeniden sipariş altı: {len(below_reorder)}
+Toplam ürün: {total_products}, sağlıklı stok: {healthy}
+KRİTİK (min_threshold altı, acil müdahale): {len(critical_items)} ürün
+UYARI (reorder_point altı ama min_threshold üstü, sipariş önerisi): {len(warning_items)} ürün
 
-Kritik stok altındaki ürünler: {critical_str}
+--- KRİTİK STOK (min_threshold altında — bu ürünler gerçekten kritik) ---
+{critical_str}
 
-Yeniden Sipariş Gerektiren Ürünler:
-{reorder_str}
+--- UYARI: SİPARİŞ ÖNERİSİ (min_threshold üstünde, sadece sipariş önerisi) ---
+{warning_str}
 
 En Yüksek Tüketim (14 gün):
 {consumption_str}
+
+--- SON 10 GÜNDE EN ÇOK SİPARİŞ EDİLEN ÜRÜNLER (stok yenileme önerisi için) ---
+{top_demand_str}
 """.strip()
 
 
@@ -148,18 +191,21 @@ def run_inventory_agent() -> None:
     db = SessionLocal()
     try:
         context = _build_context(db)
-        raw = call_groq_for_insight(SYSTEM_PROMPT, context, max_tokens=250)
-        if raw:
-            insights = parse_insight_lines(raw)
-            for insight in insights:
-                insight["entity_type"] = "inventory"
-            write_insights(db, insights, "inventory")
-            print(f"[Agent:inventory] {len(insights)} içgörü yazıldı.")
+        chash = _context_hash(context)
+        raw = call_groq_for_insight(SYSTEM_PROMPT, context, max_tokens=400)
+        if not raw:
+            return
+        insights = parse_insight_lines(raw, max_insights=4)
+        for insight in insights:
+            insight["entity_type"] = "inventory"
+        added = write_insights(db, insights, "inventory", context_hash=chash)
 
         drafts = _auto_draft_supplier_orders(db)
         if drafts:
             print(f"[Agent:inventory] {drafts} tedarikçi e-posta taslağı üretildi.")
         db.commit()
+        if added:
+            print(f"[Agent:inventory] {added} yeni içgörü eklendi.")
     except Exception as e:
         db.rollback()
         print(f"[Agent:inventory] Hata: {e}")

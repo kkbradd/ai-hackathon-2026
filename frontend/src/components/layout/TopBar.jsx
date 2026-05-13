@@ -8,7 +8,7 @@ import { useShipmentAlerts } from "../../hooks/useShipments";
 import { useAuth } from "../../store/authStore";
 
 const PAGE_LABELS = {
-  "/":          { label: "Genel Bakış",  sub: "Operasyon Merkezi" },
+  "/":          { label: "Genel Bakış",  sub: "Harman · Operasyon" },
   "/chat":      { label: "AI Asistan",   sub: "Operasyonel Zeka" },
   "/orders":    { label: "Siparişler",   sub: "Sipariş Yönetimi" },
   "/shipments": { label: "Kargo Takip",  sub: "Lojistik İzleme" },
@@ -25,7 +25,7 @@ export default function TopBar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  const pageInfo = PAGE_LABELS[pathname] ?? { label: "Kooperatif Hub", sub: "" };
+  const pageInfo = PAGE_LABELS[pathname] ?? { label: "Harman", sub: "" };
 
   const initials = user?.full_name
     ? user.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
@@ -112,7 +112,7 @@ export default function TopBar() {
             onClick={() => setDropdownOpen((o) => !o)}
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
           >
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-yellow-500 to-green-700 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
               {initials}
             </div>
             <span className="text-[12px] font-semibold text-slate-700 hidden sm:block">

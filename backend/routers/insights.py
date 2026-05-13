@@ -67,7 +67,9 @@ def agent_status(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    from datetime import datetime, timedelta
     agent_names = ["operational", "shipment", "inventory", "customer_issue"]
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     result = []
     for name in agent_names:
         latest = (
@@ -77,11 +79,13 @@ def agent_status(
             .first()
         )
         if latest:
+            # Bugün bu agent'ın yazdığı, henüz dismiss edilmemiş insight sayısı
             count = (
                 db.query(AIInsight)
                 .filter(
                     AIInsight.agent_name == name,
-                    AIInsight.created_at >= latest.created_at.replace(second=0, microsecond=0),
+                    AIInsight.is_dismissed == False,
+                    AIInsight.created_at >= today_start,
                 )
                 .count()
             )

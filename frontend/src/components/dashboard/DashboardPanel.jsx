@@ -4,6 +4,7 @@ import { Zap, AlertTriangle, Package, MessageSquare, CheckCircle, RefreshCw, Sho
 import { useDashboard } from "../../hooks/useDashboard";
 import { triggerSimulationEvent } from "../../api/client";
 import KpiGrid from "./KpiGrid";
+import TodayBriefSection from "./TodayBriefSection";
 import TodayMessagesCard from "./TodayMessagesCard";
 import AnalyticsSection from "./AnalyticsSection";
 import AIInsightsSection from "./AIInsightsSection";
@@ -100,7 +101,7 @@ export default function DashboardPanel() {
         {/* Zone 1 — Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-1">Operasyon Merkezi</h1>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-1">Harman</h1>
             <p className="text-[12px] font-medium text-slate-400 flex items-center gap-2 flex-wrap">
               <span>Tarım ve Gıda Kooperatifi</span>
               <span className="w-1 h-1 rounded-full bg-slate-300" />
@@ -125,20 +126,23 @@ export default function DashboardPanel() {
           </div>
         )}
 
-        {/* Zone 2 — Sabah brifingi (rol-bazlı, AI özetli) */}
+        {/* Zone 2 — Today's Operational Brief */}
+        <TodayBriefSection data={data} loading={loading} />
+
+        {/* Zone 3 — Sabah brifingi (rol-bazlı, AI özetli) */}
         <DailyBriefingCard />
 
-        {/* Zone 3 — KPIs */}
+        {/* Zone 4 — KPIs */}
         <KpiGrid data={data} loading={loading} />
 
-        {/* Zone 4 — AI aksiyon: tedarikçi e-posta taslakları (sadece pending varsa görünür) */}
+        {/* Zone 5 — AI aksiyon: tedarikçi e-posta taslakları */}
         <SupplierDraftsPanel />
 
-        {/* Zone 5 — Bugünkü mesajlar */}
+        {/* Zone 6 — Bugünkü mesajlar */}
         <TodayMessagesCard data={data} loading={loading} />
 
-        {/* Zone 6 — Analytics */}
-        <div className="pt-8 mt-2 border-t border-slate-100">
+        {/* Zone 7 — Analytics */}
+        <div className="pt-6 border-t border-slate-100/80">
           <AnalyticsSection
             data={data}
             loading={loading}
@@ -147,14 +151,14 @@ export default function DashboardPanel() {
           />
         </div>
 
-        {/* Zone 7 — AI Insights + Alerts */}
-        <div className="pt-8 mt-2 border-t border-slate-100">
-          <AIInsightsSection loading={loading} />
+        {/* Zone 8 — Activity Feed */}
+        <div className="pt-6 border-t border-slate-100/80">
+          <ActivityFeed data={data} loading={loading} />
         </div>
 
-        {/* Zone 8 — Activity Feed */}
-        <div className="pt-8 mt-2 border-t border-slate-100">
-          <ActivityFeed data={data} loading={loading} />
+        {/* Zone 7 — AI Insights (deep analysis, below charts) */}
+        <div className="pt-6 border-t border-slate-100/80">
+          <AIInsightsSection loading={loading} />
         </div>
 
       </div>

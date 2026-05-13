@@ -2,23 +2,26 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import text
 
-from agents.gemini_client import call_gemini_for_insight as call_groq_for_insight, parse_insight_lines, write_insights
+from agents.gemini_client import call_gemini_for_insight as call_groq_for_insight, parse_insight_lines, write_insights, _context_hash
 from database import SessionLocal
 
-SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Kargo İzleme Ajanısın.
-Sana verilen kargo pipeline verilerini analiz et ve 3 içgörü üret.
+SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin Kargo Takip Analisti'sin.
+Sana verilen ANLIK kargo pipeline verilerini analiz et ve tam olarak 3 içgörü üret.
+
+ODAK: Şu an geciken kargolar kimler, kaç saattir gecikmede? Hangi taşıyıcı sorunlu?
+Son dakikalarda ne değişti? Somut takip numaraları ve alıcı adlarıyla konuş.
 
 ÇIKTI KURALLARI — KESİNLİKLE UY:
 - Her satır tam olarak şu formatta olmalı: SEVERITY|TYPE|CONTENT
 - SEVERITY değerleri: critical, warning, info, positive (küçük harf)
 - TYPE değerleri: summary, alert, recommendation, anomaly (küçük harf)
-- CONTENT: Türkçe, tam ve anlamlı bir cümle. "CONTENT:" yazma, sadece cümleyi yaz.
-- Başka hiçbir şey yazma: açıklama, başlık, tire, yıldız, numara yok.
+- CONTENT: Türkçe, tam ve anlamlı bir cümle (en az 15 kelime). Asla yarım bırakma.
+- "CONTENT:" yazma, sadece cümleyi yaz. Tire, yıldız, numara yok.
 
 ÖRNEK (bu formatı birebir kullan):
-critical|alert|3 kargo tahmini teslimat tarihini geçti, kargo firmasıyla acil iletişime geçilmeli.
-info|summary|Son 3 dakikada 7 kargonun durumu güncellendi, pipeline normal akışta ilerliyor.
-positive|summary|Tüm aktif kargolar zamanında teslim sürecinde, gecikme riski bulunmuyor."""
+critical|alert|3 kargo tahmini teslimat tarihini 6 saatten fazla geçti, en kritik durum Aras Kargo'da Mehmet Yılmaz teslimatı.
+warning|anomaly|Son 10 dakikada aynı taşıyıcıdan 4 kargonun durumu güncellenmedi, sistem arızası ya da bağlantı sorunu olabilir.
+positive|summary|Bugün teslim edilen 12 kargonun tamamı zamanında ulaştı, lojistik pipeline sorunsuz akıyor."""
 
 
 def _build_context(db, since: datetime) -> str:
@@ -62,7 +65,7 @@ def _build_context(db, since: datetime) -> str:
     delayed_str = ""
     if delayed_details:
         delayed_str = "\n".join(
-            f"- {r.tracking_number} ({r.carrier}): {r.hours_late}s gecikme, alıcı: {r.recipient_name}"
+            f"- {r.tracking_number} ({r.carrier}): {r.hours_late} saat gecikti, alıcı: {r.recipient_name}"
             for r in delayed_details
         )
     else:
@@ -91,13 +94,19 @@ def run_shipment_agent() -> None:
         db.commit()
 
         context = _build_context(db, since)
+        chash = _context_hash(context)
         raw = call_groq_for_insight(SYSTEM_PROMPT, context, max_tokens=250)
         if not raw:
             return
         insights = parse_insight_lines(raw)
-        write_insights(db, insights, "shipment")
+        # Gecikmiş kargo varsa ilk insight en az warning olsun
+        if "Gecikmiş kargo yok" not in context and insights:
+            if insights[0]["severity"] == "info":
+                insights[0]["severity"] = "warning"
+        added = write_insights(db, insights, "shipment", context_hash=chash)
         db.commit()
-        print(f"[Agent:shipment] pipeline ilerledi, {len(insights)} içgörü yazıldı.")
+        if added:
+            print(f"[Agent:shipment] {added} yeni içgörü eklendi.")
     except Exception as e:
         db.rollback()
         print(f"[Agent:shipment] Hata: {e}")

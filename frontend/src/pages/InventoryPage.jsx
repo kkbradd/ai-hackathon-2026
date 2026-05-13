@@ -2,9 +2,10 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Package, AlertTriangle, TrendingDown, RefreshCw,
-  CheckCircle, ArrowDown, Info, DollarSign, Box
+  CheckCircle, ArrowDown, Info, DollarSign, Box, Zap
 } from "lucide-react";
 import { useInventory } from "../hooks/useInventory";
+import { triggerSimulationEvent } from "../api/client";
 
 function StockBar({ pct, isCritical, isLow }) {
   const color = isCritical
@@ -166,6 +167,22 @@ function InventorySummaryCard({ count, lowCount, loading }) {
 export default function InventoryPage() {
   const { data, loading, error, refresh } = useInventory();
   const [activeTab, setActiveTab] = useState("stock"); // "stock" or "info"
+  const [restocking, setRestocking] = useState(false);
+  const [restockToast, setRestockToast] = useState(null);
+
+  const handleRestock = async () => {
+    setRestocking(true);
+    try {
+      await triggerSimulationEvent("restock_critical");
+      setRestockToast({ ok: true, msg: "Kritik stoklar dolduruldu." });
+      refresh();
+    } catch {
+      setRestockToast({ ok: false, msg: "İşlem başarısız oldu." });
+    } finally {
+      setRestocking(false);
+      setTimeout(() => setRestockToast(null), 3000);
+    }
+  };
 
   return (
     <div className="h-full overflow-auto bg-slate-50/30">
@@ -182,7 +199,24 @@ export default function InventoryPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="relative flex flex-wrap items-center gap-3 shrink-0">
+            {restockToast && (
+              <div className={`absolute -top-10 right-0 text-[11px] font-semibold px-3 py-1.5 rounded-lg shadow-md whitespace-nowrap z-50 ${restockToast.ok ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
+                {restockToast.msg}
+              </div>
+            )}
+            {(data?.low_stock_count ?? 0) > 0 && (
+              <button
+                onClick={handleRestock}
+                disabled={restocking}
+                className="flex items-center gap-2 px-4 py-2.5 text-[12px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-2xl transition-all shadow-sm disabled:opacity-60"
+              >
+                {restocking
+                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                  : <Zap className="w-4 h-4" />}
+                Kritik Stokları Doldur
+              </button>
+            )}
             <button
               onClick={refresh}
               className="p-3 bg-white border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl transition-all hover:rotate-180 duration-500"

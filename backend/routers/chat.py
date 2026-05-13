@@ -23,6 +23,15 @@ def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db), _: User =
         return ChatResponse(**result)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        err = str(e)
+        if "429" in err or "quota" in err.lower() or "rate" in err.lower() or "limit" in err.lower():
+            return ChatResponse(
+                reply=(
+                    "Groq API istek limiti aşıldı, kısa bir süre bekleyip tekrar deneyin."
+                )
+            )
+        raise HTTPException(status_code=500, detail=err)
 
 
 @router.delete("/{session_id}")

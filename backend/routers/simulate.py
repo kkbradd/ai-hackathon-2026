@@ -9,7 +9,7 @@ import simulation
 
 router = APIRouter(prefix="/simulate", tags=["simulate"])
 
-VALID_EVENTS = {"delayed_shipment", "stock_drop", "complaint", "anomaly", "delivery", "new_order", "new_customer"}
+VALID_EVENTS = {"delayed_shipment", "stock_drop", "complaint", "anomaly", "delivery", "new_order", "new_customer", "restock_critical", "spread_pipeline"}
 
 
 @router.post("/event")
@@ -33,5 +33,7 @@ def trigger_event(
         "delivery":         "Teslimat tamamlama olayı tetiklendi.",
         "new_order":        "Yeni sipariş oluşturuldu.",
         "new_customer":     "Yeni müşteri ve sipariş oluşturuldu.",
+        "restock_critical": "Kritik stoklar yeniden dolduruldu.",
+        "spread_pipeline":  "Kargolar pipeline'da dağıtıldı.",
     }
     return {"detail": labels[req.event_type], "event_type": req.event_type}

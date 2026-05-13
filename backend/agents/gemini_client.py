@@ -1,71 +1,99 @@
-"""Shared Gemini helper for background insight agents."""
+"""Shared LLM helper for background insight agents. Tries Gemini first, falls back to Groq."""
 import os
 from datetime import datetime, timedelta
-
-import google.generativeai as genai
 
 VALID_SEVERITIES = {"critical", "warning", "info", "positive"}
 VALID_TYPES = {"summary", "alert", "recommendation", "anomaly"}
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-2.0-flash-lite"
+GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 
-def _client() -> genai.GenerativeModel:
+def _is_quota_error(err: str) -> bool:
+    lowered = err.lower()
+    return any(kw in lowered for kw in ("429", "quota", "rate", "limit", "resourceexhausted", "exhausted"))
+
+
+def _call_gemini(system_prompt: str, user_prompt: str, max_tokens: int) -> str:
+    import google.generativeai as genai
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY ortam değişkeni ayarlanmamış.")
+        raise RuntimeError("GEMINI_API_KEY yok")
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel(
+    model = genai.GenerativeModel(
         GEMINI_MODEL,
+        system_instruction=system_prompt,
         generation_config=genai.types.GenerationConfig(
             temperature=0.3,
-            max_output_tokens=600,
+            max_output_tokens=max_tokens,
         ),
     )
+    response = model.generate_content(user_prompt)
+    return response.text.strip()
+
+
+def _call_groq(system_prompt: str, user_prompt: str, max_tokens: int) -> str:
+    from groq import Groq
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY yok")
+    client = Groq(api_key=api_key)
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.3,
+        max_tokens=max_tokens,
+    )
+    return response.choices[0].message.content.strip()
 
 
 def call_gemini_for_insight(system_prompt: str, user_prompt: str, max_tokens: int = 600) -> str:
-    user_prompt = user_prompt[:2000]
+    """Önce Gemini dener. Kota/rate-limit hatası alırsa Groq'a geçer. Her ikisi de başarısız olursa boş döner."""
+    user_prompt = user_prompt[:3000]
+
+    # 1. Gemini denemesi
     try:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY ortam değişkeni ayarlanmamış.")
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            GEMINI_MODEL,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.3,
-                max_output_tokens=2000,
-            ),
-        )
-        full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        response = model.generate_content(full_prompt)
-        return response.text.strip()
+        result = _call_gemini(system_prompt, user_prompt, max_tokens)
+        print("[LLM] Gemini kullanıldı.")
+        return result
     except Exception as e:
-        status = getattr(getattr(e, "response", None), "status_code", None)
-        if status == 429 or "429" in str(e) or "quota" in str(e).lower() or "rate" in str(e).lower():
-            print(f"[Gemini] Rate limit — skipping this agent run. ({e})")
-            return ""
-        print(f"[Gemini] API error: {e}")
+        err = str(e)
+        if _is_quota_error(err):
+            print(f"[LLM] Gemini kota/limit — Groq'a geçiliyor. ({err[:80]})")
+        else:
+            print(f"[LLM] Gemini hatası — Groq'a geçiliyor. ({err[:80]})")
+
+    # 2. Groq fallback
+    try:
+        result = _call_groq(system_prompt, user_prompt, max_tokens)
+        print("[LLM] Groq kullanıldı (fallback).")
+        return result
+    except Exception as e:
+        err = str(e)
+        if _is_quota_error(err):
+            print(f"[LLM] Groq da rate limit — bu çalışma atlandı. ({err[:80]})")
+        else:
+            print(f"[LLM] Groq hatası — bu çalışma atlandı. ({err[:80]})")
         return ""
 
 
 def _clean_content(text: str) -> str:
-    """Remove stray prefixes like 'CONTENT:', 'content:', bullet chars."""
     import re
     text = re.sub(r"^(CONTENT|content)\s*:\s*", "", text).strip()
     text = re.sub(r"^[-*•]\s*", "", text).strip()
     return text
 
 
-def parse_insight_lines(raw: str) -> list[dict]:
+def parse_insight_lines(raw: str, max_insights: int = 3) -> list[dict]:
     import re
     results = []
     for line in raw.strip().splitlines():
         line = line.strip()
         if not line:
             continue
-        # Strip markdown bold/italic and backticks
         line = re.sub(r"[*_`]", "", line).strip()
 
         parts = line.split("|", 2)
@@ -86,25 +114,58 @@ def parse_insight_lines(raw: str) -> list[dict]:
         results.append({"severity": severity, "type": insight_type, "content": content})
 
     if not results and raw.strip():
-        # Last resort: treat entire response as a single info summary
         cleaned = _clean_content(raw.strip())
         results.append({
             "severity": "info",
             "type": "summary",
             "content": cleaned[:300],
         })
-    return results[:3]
+    return results[:max_insights]
 
 
-def write_insights(db, insights: list[dict], agent_name: str) -> None:
+def _context_hash(context: str) -> str:
+    import hashlib, re
+    normalized = re.sub(r"\d{2}:\d{2}", "", context).strip()
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def write_insights(db, insights: list[dict], agent_name: str, context_hash: str = "") -> int:
+    """Yalnızca operasyonel context değiştiğinde yeni insight yazar."""
     from models import AIInsight
-    cutoff = datetime.utcnow() - timedelta(hours=2)
+
+    cutoff = datetime.utcnow() - timedelta(hours=24)
     db.query(AIInsight).filter(
         AIInsight.agent_name == agent_name,
         AIInsight.created_at < cutoff,
-        AIInsight.is_dismissed == False,
     ).delete(synchronize_session=False)
+
+    if context_hash:
+        sentinel = (
+            db.query(AIInsight)
+            .filter(AIInsight.agent_name == agent_name, AIInsight.insight_type == "_hash")
+            .order_by(AIInsight.created_at.desc())
+            .first()
+        )
+        if sentinel and sentinel.content == context_hash:
+            print(f"[{agent_name}] Durum değişmedi, insight eklenmedi.")
+            return 0
+
     now = datetime.utcnow()
+
+    if context_hash:
+        db.query(AIInsight).filter(
+            AIInsight.agent_name == agent_name,
+            AIInsight.insight_type == "_hash",
+        ).delete(synchronize_session=False)
+        db.add(AIInsight(
+            agent_name=agent_name,
+            insight_type="_hash",
+            content=context_hash,
+            severity="info",
+            created_at=now,
+            is_dismissed=True,
+        ))
+
     for item in insights:
         db.add(AIInsight(
             agent_name=agent_name,
@@ -116,3 +177,4 @@ def write_insights(db, insights: list[dict], agent_name: str) -> None:
             created_at=now,
             is_dismissed=False,
         ))
+    return len(insights)

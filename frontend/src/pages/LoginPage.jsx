@@ -41,9 +41,7 @@ export default function LoginPage() {
 
         <div className="relative z-10">
           {/* Logo mark */}
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 mb-8">
-            <Zap className="w-6 h-6 text-white" />
-          </div>
+          <img src="/harman-logo.png" alt="Harman" className="w-14 h-14 rounded-2xl object-cover shadow-lg mb-8" />
 
           <h1 className="text-[32px] font-bold text-white tracking-tight leading-tight">
             AI destekli operasyon yönetimi
@@ -74,10 +72,8 @@ export default function LoginPage() {
         <div className="w-full max-w-sm relative z-10">
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Zap className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-[16px] font-semibold text-white">İşletme Asistanı</span>
+            <img src="/harman-logo.png" alt="Harman" className="w-9 h-9 rounded-xl object-cover shadow-lg" />
+            <span className="text-[16px] font-bold text-white">Harman</span>
           </div>
 
           <motion.div
@@ -132,7 +128,7 @@ export default function LoginPage() {
                 type="submit"
                 disabled={loading}
                 whileTap={{ scale: 0.98 }}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-all shadow-xl shadow-indigo-500/20 text-[14px] mt-2"
+                className="w-full bg-gradient-to-r from-yellow-600 to-green-700 hover:from-yellow-500 hover:to-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-all shadow-xl shadow-green-900/30 text-[14px] mt-2"
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">

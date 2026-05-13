@@ -37,10 +37,10 @@ QTY_MULTIPLIERS = {
 }
 
 PIPELINE_DELAYS = {
-    "preparing":        (4,  8),
-    "in_transit":       (24, 48),
-    "at_facility":      (4,  12),
-    "out_for_delivery": (2,  6),
+    "preparing":        (6,   18),
+    "in_transit":       (20,  52),
+    "at_facility":      (6,   16),
+    "out_for_delivery": (3,   10),
 }
 
 COMPLAINT_TEMPLATES = [
@@ -69,6 +69,72 @@ TRANSITIONS = {
     "at_facility":      "out_for_delivery",
     "out_for_delivery": "delivered",
 }
+
+# Saatlik geçiş eşikleri (min, max) — her aşamada kaç saat beklenir
+_STAGE_HOURS = [
+    ("preparing",        (8,  18)),
+    ("in_transit",       (24, 52)),
+    ("at_facility",      (6,  16)),
+    ("out_for_delivery", (4,  10)),
+]
+_STAGE_LOCS = {
+    "preparing":        ("Kooperatif Deposu",    "Ürünler paketlendi, kargo taşıyıcıya hazır."),
+    "in_transit":       ("Transfer Merkezi",     "Kargo taşıyıcı aktarma merkezine ulaştı."),
+    "at_facility":      ("Dağıtım Şubesi",       "Kargo hedef şehirdeki şubeye ulaştı."),
+    "out_for_delivery": ("Dağıtım Aracı",        "Kargo dağıtıma çıktı."),
+    "delivered":        ("Teslim Noktası",       "Kargo başarıyla teslim edildi."),
+}
+
+
+def _build_shipment_history(start: datetime, now: datetime):
+    """Walk the pipeline from `start` forward using realistic delays.
+    Returns (current_status, list_of_update_tuples)."""
+    ts = start
+    updates = []
+    current = "preparing"
+    for status, (min_h, max_h) in _STAGE_HOURS:
+        loc, desc = _STAGE_LOCS[status]
+        updates.append((status, loc, desc, ts))
+        current = status
+        # Advance time by a random duration within this stage's range
+        elapsed_h = min_h + random.random() * (max_h - min_h)
+        ts = ts + timedelta(hours=elapsed_h)
+        if ts > now:
+            # Haven't reached the next stage yet — stop here
+            break
+    return current, updates
+
+
+def _spread_existing_shipments(db):
+    """Backdate stuck 'preparing' shipments so they appear at realistic pipeline stages."""
+    now = datetime.utcnow()
+    stuck = db.query(Shipment).filter(
+        Shipment.status == ShipmentStatus.preparing,
+    ).all()
+    for shipment in stuck:
+        days_back = random.randint(1, 4)
+        ship_start = now - timedelta(days=days_back, hours=random.randint(0, 12))
+        new_status, stage_updates = _build_shipment_history(ship_start, now)
+
+        # Delete old updates for this shipment
+        db.execute(text("DELETE FROM shipment_updates WHERE shipment_id = :sid"), {"sid": shipment.id})
+
+        shipment.status = ShipmentStatus(new_status)
+        shipment.created_at = ship_start
+        shipment.updated_at = now
+        if shipment.estimated_delivery:
+            # Recalculate: 5 days from original start
+            shipment.estimated_delivery = ship_start + timedelta(days=5)
+
+        for su_status, su_loc, su_desc, su_ts in stage_updates:
+            db.add(ShipmentUpdate(
+                shipment_id=shipment.id,
+                status=su_status,
+                location=su_loc,
+                description=su_desc,
+                timestamp=su_ts,
+            ))
+
 
 TURKISH_FIRST_NAMES = [
     "Ahmet", "Mehmet", "Mustafa", "Ali", "Hüseyin", "Hasan", "İbrahim",
@@ -484,6 +550,10 @@ def trigger_event(event_type: str, target_id: Optional[int] = None):
             _trigger_new_order(db)
         elif event_type == "new_customer":
             _trigger_new_customer(db)
+        elif event_type == "restock_critical":
+            _trigger_restock_critical(db)
+        elif event_type == "spread_pipeline":
+            _spread_existing_shipments(db)
         db.commit()
     finally:
         db.close()
@@ -740,27 +810,33 @@ def _trigger_new_order(db):
             if inv.quantity_kg < inv.min_threshold:
                 _ensure_low_stock_alert(db, inv)
 
+    # Kargo gerçekçi bir lifecycle noktasından başlasın (0-4 gün önce)
+    days_back = random.randint(0, 4)
+    ship_start = now - timedelta(days=days_back, hours=random.randint(0, 12))
+    stage_status, stage_updates = _build_shipment_history(ship_start, now)
+
     shipment = Shipment(
         order_id=order.id,
         tracking_number=tracking,
         carrier=carrier,
-        status=ShipmentStatus.preparing,
-        created_at=now,
+        status=ShipmentStatus(stage_status),
+        created_at=ship_start,
         updated_at=now,
-        estimated_delivery=now + timedelta(days=5),
+        estimated_delivery=ship_start + timedelta(days=5),
         recipient_name=customer.name,
         recipient_address=order.shipping_address,
     )
     db.add(shipment)
     db.flush()
 
-    db.add(ShipmentUpdate(
-        shipment_id=shipment.id,
-        status="preparing",
-        location=f"{city} Kooperatif Deposu",
-        description="Ürünler paketlendi, kargo taşıyıcıya hazır.",
-        timestamp=now,
-    ))
+    for su_status, su_loc, su_desc, su_ts in stage_updates:
+        db.add(ShipmentUpdate(
+            shipment_id=shipment.id,
+            status=su_status,
+            location=su_loc,
+            description=su_desc,
+            timestamp=su_ts,
+        ))
 
 
 def _trigger_new_customer(db):
@@ -853,6 +929,29 @@ def _trigger_new_customer(db):
         description="Ürünler paketlendi, kargo taşıyıcıya hazır.",
         timestamp=now,
     ))
+
+
+def _trigger_restock_critical(db):
+    """Raise all below-min_threshold items up to reorder_point (safe target level)."""
+    low_items = (
+        db.query(Inventory)
+        .filter(Inventory.quantity_kg < Inventory.min_threshold)
+        .all()
+    )
+    now = datetime.utcnow()
+    for inv in low_items:
+        target = inv.reorder_point * 2.0
+        added = round(target - inv.quantity_kg, 2)
+        if added <= 0:
+            continue
+        inv.quantity_kg = round(target, 2)
+        inv.last_updated = now
+        db.add(InventoryMovement(
+            product_id=inv.product_id,
+            quantity_change=added,
+            movement_type="restock",
+            timestamp=now,
+        ))
 
 
 def _trigger_delivery(db, target_id):

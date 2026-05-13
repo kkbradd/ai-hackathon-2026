@@ -60,6 +60,10 @@ export default function TodayMessagesCard({ data, loading }) {
               className="flex flex-col gap-0.5 border border-slate-50 rounded-xl px-3 py-2 bg-slate-50/50"
             >
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  m.urgency === "yüksek" ? "bg-red-500" :
+                  m.urgency === "orta" ? "bg-amber-400" : "bg-slate-300"
+                }`} />
                 <span className="font-semibold text-slate-800 truncate max-w-[180px] text-[12px]">{m.customer_name}</span>
                 {m.category && (
                   <span className="text-[10px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-md">

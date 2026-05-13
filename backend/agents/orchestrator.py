@@ -28,11 +28,11 @@ class AgentOrchestrator:
     # Stagger LLM agents so they don't all fire simultaneously on boot.
     # simulation_tick has no LLM so it runs immediately (delay=0).
     SCHEDULE = [
-        ("simulation_tick", 120,  _run_simulation_tick, 0),
-        ("shipment",        600,  run_shipment_agent,   60),
-        ("operational",     900,  run_operational_agent, 120),
-        ("inventory",       1800, run_inventory_agent,  180),
-        ("customer_issue",  1800, run_customer_issue_agent, 240),
+        ("simulation_tick", 120,  _run_simulation_tick,    0),
+        ("shipment",        900,  run_shipment_agent,     60),
+        ("operational",     900,  run_operational_agent,  120),
+        ("inventory",       900,  run_inventory_agent,    180),
+        ("customer_issue",  900,  run_customer_issue_agent, 240),
     ]
 
     def __init__(self):

@@ -3,11 +3,13 @@ import os
 import re
 from typing import Optional
 
-import google.generativeai as genai
 from sqlalchemy.orm import Session
 
 from agent.tool_definitions import TOOL_DEFINITIONS
 from agent import tools as tool_fns
+
+GEMINI_MODEL = "gemini-2.0-flash-lite"
+GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 SYSTEM_PROMPT = """Sen Anadolu Tarım ve Gıda Kooperatifi'nin yapay zeka destekli Operasyon Yöneticisisin.
 
@@ -74,23 +76,16 @@ Kısa, net, eyleme geçilebilir. Kritik durumlar için:
 - Çok uzun listeleri özetle: "5 üründen 3'ü kritik: X, Y, Z..."
 """
 
-# In-memory session history: session_id -> list of Content dicts
-_sessions: dict[str, list] = {}
+# Groq tool format
+_GROQ_TOOLS = [{"type": "function", "function": td} for td in TOOL_DEFINITIONS]
+
+# In-memory session history: session_id -> {"backend": "gemini"|"groq", "history": [...]}
+_sessions: dict[str, dict] = {}
 
 
-def _build_gemini_tools() -> list[genai.types.Tool]:
-    """Convert TOOL_DEFINITIONS to Gemini FunctionDeclaration format."""
-    declarations = []
-    for td in TOOL_DEFINITIONS:
-        params = td.get("parameters", {"type": "object", "properties": {}})
-        declarations.append(
-            genai.types.FunctionDeclaration(
-                name=td["name"],
-                description=td["description"],
-                parameters=params,
-            )
-        )
-    return [genai.types.Tool(function_declarations=declarations)]
+def _is_quota_error(err: str) -> bool:
+    lowered = err.lower()
+    return any(kw in lowered for kw in ("429", "quota", "rate", "limit", "resourceexhausted", "exhausted"))
 
 
 def _strip_leaked_tool_syntax(text: str) -> str:
@@ -154,43 +149,50 @@ def _dispatch_tool(name: str, args: dict, db: Session) -> dict:
     return fn()
 
 
-def chat(message: str, session_id: str, db: Session) -> dict:
+# ---------- Gemini chat ----------
+
+def _build_gemini_tools():
+    import google.generativeai as genai
+    declarations = []
+    for td in TOOL_DEFINITIONS:
+        params = td.get("parameters", {"type": "object", "properties": {}})
+        declarations.append(genai.types.FunctionDeclaration(
+            name=td["name"],
+            description=td["description"],
+            parameters=params,
+        ))
+    return [genai.types.Tool(function_declarations=declarations)]
+
+
+def _chat_gemini(message, history: list, db: Session) -> tuple[str, Optional[str], Optional[dict], list]:
+    """Returns (reply_text, tool_used, tool_data, updated_history). Raises on quota/error."""
+    import google.generativeai as genai
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY ortam değişkeni ayarlanmamış.")
+        raise RuntimeError("GEMINI_API_KEY yok")
 
     genai.configure(api_key=api_key)
     tools = _build_gemini_tools()
     model = genai.GenerativeModel(
-        "gemini-2.5-flash",
+        GEMINI_MODEL,
         system_instruction=SYSTEM_PROMPT,
         tools=tools,
         generation_config=genai.types.GenerationConfig(temperature=0.2),
     )
 
-    # Gemini uses a chat session with history
-    history = _sessions.setdefault(session_id, [])
-
-    tool_used: Optional[str] = None
-    tool_data: Optional[dict] = None
-
-    # Start/resume chat session
     chat_session = model.start_chat(history=history)
-
-    # Agentic loop
-    max_rounds = 6
+    tool_used = None
+    tool_data = None
     current_message = message
     final_text = ""
 
-    for _ in range(max_rounds):
+    for _ in range(6):
         response = chat_session.send_message(current_message)
         parts = response.candidates[0].content.parts
-
-        # Collect all function calls in this response
         fn_calls = [p.function_call for p in parts if hasattr(p, "function_call") and p.function_call.name]
 
         if fn_calls:
-            # Build function response parts for all tool calls
             fn_response_parts = []
             for fc in fn_calls:
                 tool_used = fc.name
@@ -205,26 +207,121 @@ def chat(message: str, session_id: str, db: Session) -> dict:
                         )
                     )
                 )
-
-            # Send all function responses back in one message
-            current_message = genai.protos.Content(
-                role="function",
-                parts=fn_response_parts,
-            )
+            current_message = genai.protos.Content(role="function", parts=fn_response_parts)
             continue
 
-        # No function calls — extract text
         text_parts = [p.text for p in parts if hasattr(p, "text") and p.text]
         if text_parts:
             final_text = "".join(text_parts)
         break
 
-    # Persist history for next turn (Gemini chat session tracks it internally)
-    _sessions[session_id] = chat_session.history
+    return final_text, tool_used, tool_data, list(chat_session.history)
 
-    # Keep history bounded
-    if len(_sessions[session_id]) > 40:
-        _sessions[session_id] = _sessions[session_id][-40:]
+
+# ---------- Groq chat ----------
+
+def _chat_groq(message, history: list, db: Session) -> tuple[str, Optional[str], Optional[dict], list]:
+    """Returns (reply_text, tool_used, tool_data, updated_history). Raises on quota/error."""
+    from groq import Groq
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY yok")
+
+    client = Groq(api_key=api_key)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [{"role": "user", "content": message}]
+
+    tool_used = None
+    tool_data = None
+    final_text = ""
+
+    for _ in range(6):
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            tools=_GROQ_TOOLS,
+            tool_choice="auto",
+            parallel_tool_calls=False,
+            temperature=0.2,
+            max_tokens=1024,
+        )
+        msg = response.choices[0].message
+        messages.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [tc.__dict__ if hasattr(tc, "__dict__") else tc for tc in (msg.tool_calls or [])],
+        })
+
+        if msg.tool_calls:
+            for tc in msg.tool_calls:
+                tool_used = tc.function.name
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                result = _dispatch_tool(tc.function.name, args, db)
+                tool_data = result
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+            continue
+
+        final_text = msg.content or ""
+        break
+
+    # Return history without system message
+    return final_text, tool_used, tool_data, messages[1:]
+
+
+# ---------- Public interface ----------
+
+def chat(message: str, session_id: str, db: Session) -> dict:
+    session = _sessions.setdefault(session_id, {"backend": "gemini", "history": []})
+    history = session["history"]
+    current_backend = session["backend"]
+
+    tool_used = None
+    tool_data = None
+    final_text = ""
+    used_backend = current_backend
+
+    # Try preferred backend first, fall back to the other on quota/error
+    backends = ["gemini", "groq"] if current_backend == "gemini" else ["groq", "gemini"]
+
+    for backend in backends:
+        try:
+            if backend == "gemini":
+                # Gemini keeps its own history format — pass only if we have Gemini history
+                gemini_history = history if current_backend == "gemini" else []
+                final_text, tool_used, tool_data, new_history = _chat_gemini(message, gemini_history, db)
+            else:
+                # Convert to flat message list for Groq
+                groq_history = history if current_backend == "groq" else []
+                final_text, tool_used, tool_data, new_history = _chat_groq(message, groq_history, db)
+
+            used_backend = backend
+            session["backend"] = backend
+            session["history"] = new_history
+
+            # Keep history bounded
+            if len(session["history"]) > 40:
+                session["history"] = session["history"][-40:]
+
+            print(f"[Chat] {backend} kullanıldı.")
+            break
+
+        except Exception as e:
+            err = str(e)
+            if _is_quota_error(err):
+                print(f"[Chat] {backend} kota/limit — {'diğerine geçiliyor' if backend != backends[-1] else 'ikisi de dolu'}. ({err[:100]})")
+                if backend == backends[-1]:
+                    final_text = "Şu anda her iki AI servisi de yoğun. Lütfen birkaç dakika sonra tekrar deneyin."
+            else:
+                print(f"[Chat] {backend} hatası — {'diğerine geçiliyor' if backend != backends[-1] else 'başarısız'}. ({err[:100]})")
+                if backend == backends[-1]:
+                    final_text = "AI servisine bağlanırken bir sorun oluştu. Lütfen tekrar deneyin."
 
     cleaned = _strip_leaked_tool_syntax(final_text.strip())
     return {"reply": cleaned, "tool_used": tool_used, "tool_data": tool_data}

@@ -11,30 +11,34 @@ const SEVERITY_STYLE = {
   critical: {
     card: "bg-red-50 border-red-100",
     icon: "bg-red-100 text-red-600",
-    badge: "bg-red-100 text-red-600",
+    badge: "bg-red-100 text-red-700",
     dot: "bg-red-500",
     text: "text-red-700",
+    label: "Kritik",
   },
   warning: {
     card: "bg-amber-50 border-amber-100",
     icon: "bg-amber-100 text-amber-600",
-    badge: "bg-amber-100 text-amber-600",
+    badge: "bg-amber-100 text-amber-700",
     dot: "bg-amber-400",
     text: "text-amber-700",
+    label: "Uyarı",
   },
   info: {
     card: "bg-blue-50 border-blue-100",
     icon: "bg-blue-100 text-blue-600",
-    badge: "bg-blue-100 text-blue-600",
+    badge: "bg-blue-100 text-blue-700",
     dot: "bg-blue-500",
     text: "text-blue-700",
+    label: "Bilgi",
   },
   positive: {
     card: "bg-emerald-50 border-emerald-100",
     icon: "bg-emerald-100 text-emerald-600",
-    badge: "bg-emerald-100 text-emerald-600",
+    badge: "bg-emerald-100 text-emerald-700",
     dot: "bg-emerald-500",
     text: "text-emerald-700",
+    label: "İyi",
   },
 };
 
@@ -68,22 +72,22 @@ function InsightCard({ insight, index, onDismiss }) {
       transition={{ delay: index * 0.06, duration: 0.3 }}
       className="flex gap-3 p-3.5 rounded-xl bg-slate-50 hover:bg-white border border-transparent hover:border-indigo-100 hover:shadow-sm transition-all duration-300 group"
     >
-      <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
-        <Icon className="w-3.5 h-3.5 text-indigo-600" />
+      <div className="w-7 h-7 rounded-lg bg-yellow-50 flex items-center justify-center shrink-0 mt-0.5">
+        <Icon className="w-3.5 h-3.5 text-yellow-700" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${s.badge}`}>
-            {insight.severity}
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.badge}`}>
+            {s.label}
           </span>
-          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${agentColor}`}>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${agentColor}`}>
             {agentLabel}
           </span>
           {insight.created_at && (
             <span className="text-[9px] text-slate-400 ml-auto">{insight.created_at}</span>
           )}
         </div>
-        <p className="text-[12.5px] text-slate-700 leading-relaxed font-medium">
+        <p className="text-[13px] text-slate-800 leading-relaxed font-medium">
           {insight.content}
         </p>
       </div>
@@ -114,7 +118,7 @@ export default function AIInsightsSection({ loading: dashLoading }) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm shadow-indigo-200">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-yellow-500 to-green-700 flex items-center justify-center shadow-sm shadow-yellow-200">
               <Sparkles className="w-4.5 h-4.5 text-white" />
             </div>
             <div>
@@ -155,7 +159,7 @@ export default function AIInsightsSection({ loading: dashLoading }) {
         {/* CTA */}
         <button
           onClick={() => navigate("/chat")}
-          className="w-full text-[13px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm shadow-indigo-200"
+          className="w-full text-[13px] font-bold text-white bg-gradient-to-r from-yellow-600 to-green-700 hover:from-yellow-700 hover:to-green-800 py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm shadow-yellow-200"
         >
           <Brain className="w-4 h-4" /> AI Asistanını Aç
           <ChevronRight className="w-3.5 h-3.5" />

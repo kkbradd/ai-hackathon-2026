@@ -214,7 +214,7 @@ def seed():
         db.add(User(
             email="admin@demo.com",
             password_hash=get_password_hash("demo123"),
-            full_name="Kooperatif Yöneticisi",
+            full_name="Harman Yöneticisi",
             role="admin",
         ))
         db.flush()
